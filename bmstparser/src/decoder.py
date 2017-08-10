@@ -22,8 +22,8 @@ def parse_proj(scores, gold=None):
     incomplete[0, :, 0] -= np.inf
 
     # Loop from smaller items to larger items.
-    for k in xrange(1, N + 1):
-        for s in xrange(N - k + 1):
+    for k in range(1, N + 1):
+        for s in range(N - k + 1):
             t = s + k
 
             # First, create incomplete items.
@@ -53,7 +53,7 @@ def parse_proj(scores, gold=None):
     backtrack_eisner(incomplete_backtrack, complete_backtrack, 0, N, 1, 1, heads)
 
     value_proj = 0.0
-    for m in xrange(1, N + 1):
+    for m in range(1, N + 1):
         h = heads[m]
         value_proj += scores[h, m]
 
@@ -73,7 +73,7 @@ def backtrack_eisner(incomplete_backtrack, complete_backtrack, s, t, direction, 
     - t is the current end of the span
     - direction is 0 (left attachment) or 1 (right attachment)
     - complete is 1 if the current span is complete, and 0 otherwise
-    - heads is a (NW+1)-sized numpy array of integers which is a placeholder for storing the 
+    - heads is a (NW+1)-sized numpy array of integers which is a placeholder for storing the
     head of each word.
     '''
     if s == t:
