@@ -3,7 +3,7 @@ To be more accurate, this implementation is just a line-by-line translation from
 
 #### Required software
 
- * Python 2.7 interpreter
+ * Python 3.x interpreter
  * [Pytorch library](http://pytorch.org/)
 
 
@@ -22,7 +22,9 @@ The command for parsing a `test.conll` file formatted according to the [CoNLL da
 
 The parser will store the resulting conll file in the out directory (`--outdir`).
 
-#### Difference from the DyNet implementation
+#### Some instructions
 
 1. The multiple roots checking of the evaluation script is turned off (See [here](https://github.com/wddabc/bist-parser/blob/pytorch/bmstparser/src/utils/evaluation_script/conll17_ud_eval.py#L168-L172)) as it might generate trees with multiple roots. (See the discussion [here](https://github.com/elikip/bist-parser/issues/10)) 
-2. This version hasn't yet supported deep LSTM as the DyNet version does, which means `--lstmlayer` is no larger than 1.
+2. This version delete some unnecessary flag and set the bi-LSTM to be mandatory(2 bi-LSTM layer)
+3. You can refer forward attribute in mst-parser model for dropout rate of different components.
+4. Anything you think can improve performance please contact and discuss with me.
