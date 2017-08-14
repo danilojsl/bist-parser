@@ -1,5 +1,6 @@
 # A Pytorch implementation of the BIST Parsers (for graph based parser only)
-To be more accurate, this implementation is just a line-by-line translation from the DyNet implementation that can be found [here](https://github.com/elikip/bist-parser). The techniques behind the parser are described in the paper [Simple and Accurate Dependency Parsing Using Bidirectional LSTM Feature Representations](https://www.transacl.org/ojs/index.php/tacl/article/viewFile/885/198).
+This implement is a simplified version which removes some unnecessary flag and applies `nn Module` in Pytorch to construct LSTM network instead of `LSTMCell`. Besides, some more tags are supported and you can refer it from option list.
+The techniques behind the parser are described in the paper [Simple and Accurate Dependency Parsing Using Bidirectional LSTM Feature Representations](https://www.transacl.org/ojs/index.php/tacl/article/viewFile/885/198).
 
 #### Required software
 
@@ -12,7 +13,7 @@ The software requires having a `training.conll` and `development.conll` files fo
 
 #### Train a parsing model
 
-    python src/parser.py --outdir [results directory] --train training.conll --dev development.conll --epochs 30 --lstmdims 125 --lstmlayers 2 [--extrn extrn.vectors] --bibi-lstm
+    python src/parser.py --outdir [results directory] --train training.conll --dev development.conll --epochs 30 --lstmdims 125 --lstmlayers 2 [--extrn extrn.vectors]
 
 #### Parse data with your parsing model
 
