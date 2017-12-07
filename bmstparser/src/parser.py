@@ -36,8 +36,10 @@ if __name__ == '__main__':
                       dest="pembedding_dims", default=25)
     parser.add_option("--rembedding", type="int",
                       dest="rembedding_dims", default=25)
-    parser.add_option("--oembedding", type="int", dest="oembedding_dims", default=45) #ontology
-    parser.add_option("--cembedding", type="int", dest="cembedding_dims", default=30) #cpos
+
+    parser.add_option("--oembedding", type="int", dest="oembedding_dims", default=0) #ontology
+    parser.add_option("--cembedding", type="int", dest="cembedding_dims", default=0) #cpos
+
     parser.add_option("--epochs", type="int", dest="epochs", default=30)
     parser.add_option("--numthread", type="int", dest="numthread", default=8)
     parser.add_option("--hidden", type="int", dest="hidden_units", default=100)

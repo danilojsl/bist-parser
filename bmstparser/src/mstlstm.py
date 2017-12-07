@@ -273,17 +273,18 @@ class MSTParserLSTMModel(nn.Module):
 
         for entry in sentence:
             c = float(self.wordsCount.get(entry.norm, 0))
-            dropFlag = (random.random() < (c / (0.33 + c)))
+            # dropFlag = (random.random() < (c / (0.33 + c)))
+            dropFlag = (random.random() < (c / (0.25 + c)))
             wordvec = self.wlookup(scalar(
                 int(self.vocab.get(entry.norm, 0)) if dropFlag else 0)) if self.wdims > 0 else None
             ontovec = self.olookup(scalar(int(self.onto[entry.onto]) if random.random(
             ) < 0.9 else 0)) if self.odims > 0 else None
             cposvec = self.clookup(scalar(int(self.cpos[entry.cpos]) if random.random(
             ) < 0.9 else 0)) if self.cdims > 0 else None
-            # posvec = self.plookup(
-            #     scalar(int(self.pos[entry.pos]))) if self.pdims > 0 else None
             posvec = self.plookup(
-                scalar(0 if dropFlag and random.random() < 0.1 else int(self.pos[entry.pos]))) if self.pdims > 0 else None
+                scalar(int(self.pos[entry.pos]))) if self.pdims > 0 else None
+            # posvec = self.plookup(
+            #     scalar(0 if dropFlag and random.random() < 0.1 else int(self.pos[entry.pos]))) if self.pdims > 0 else None
             evec = None
             if self.external_embedding is not None:
                 evec = self.elookup(scalar(self.extrnd.get(entry.form, self.extrnd.get(entry.norm, 0)) if (
