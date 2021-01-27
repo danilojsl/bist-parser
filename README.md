@@ -1,4 +1,4 @@
-# A Tensorflow implementation of the BIST Parsers (for graph based parser only)
+# A Tensorflow implementation (WIP) of the BIST Parsers (for graph based parser only)
 This implement is a simplified version which removes some unnecessary flag and applies `nn Module` in Pytorch to construct LSTM network instead of `LSTMCell`. Besides, some more tags are supported and you can refer it from option list.
 The techniques behind the parser are described in the paper [Simple and Accurate Dependency Parsing Using Bidirectional LSTM Feature Representations](https://www.transacl.org/ojs/index.php/tacl/article/viewFile/885/198).
 
