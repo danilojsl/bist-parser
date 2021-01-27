@@ -42,7 +42,7 @@ def scalar(f):
         return Variable(torch.FloatTensor([f]))
 
 
-def cat(l, dimension=-1):
+def concatenate_tensors(l, dimension=-1):
     valid_l = [x for x in l if x is not None]
     if dimension < 0:
         dimension += len(valid_l[0].size())
@@ -53,6 +53,7 @@ class MSTParserLSTMModel(nn.Module):
     def __init__(self, vocab, pos, rels, enum_word, options, onto, cpos):
         super(MSTParserLSTMModel, self).__init__()
         random.seed(1)
+        # This should be the activation function for the MLP
         self.activations = {'tanh': F.tanh,
                             'sigmoid': F.sigmoid, 'relu': F.relu}
         self.activation = self.activations[options.activation]
@@ -93,7 +94,7 @@ class MSTParserLSTMModel(nn.Module):
             external_embedding_fp.close()
             self.edim = len(list(self.external_embedding.values())[0])
             self.extrnd = {word: i + 3 for i,
-                           word in enumerate(self.external_embedding)}
+                                           word in enumerate(self.external_embedding)}
             np_emb = np.zeros((len(self.external_embedding) + 3, self.edim))
             for word, i in self.extrnd.items():
                 np_emb[i] = self.external_embedding[word]
@@ -150,18 +151,19 @@ class MSTParserLSTMModel(nn.Module):
     def __getExpr(self, sentence, i, j, train):
 
         if sentence[i].headfov is None:
-            sentence[i].headfov = torch.mm(cat([sentence[i].lstms[0], sentence[i].lstms[1]]),
-                                           self.hidLayerFOH)
+            l_variable = [sentence[i].lstms[0], sentence[i].lstms[1]]
+            sentence[i].headfov = torch.mm(concatenate_tensors(l_variable), self.hidLayerFOH)
 
         if sentence[j].modfov is None:
-            sentence[j].modfov = torch.mm(cat([sentence[j].lstms[0], sentence[j].lstms[1]]),
+            l_variable = [sentence[j].lstms[0], sentence[j].lstms[1]]
+            sentence[j].modfov = torch.mm(concatenate_tensors(l_variable),
                                           self.hidLayerFOM)
 
         if self.hidden2_units > 0:
             output = torch.mm(
                 self.activation(
                     self.hid2Bias +
-                    torch.mm(self.activation(cat([sentence[i].headfov, sentence[j].modfov]) + self.catBias),
+                    torch.mm(self.activation(concatenate_tensors([sentence[i].headfov, sentence[j].modfov]) + self.catBias),
                              self.hid2Layer)
                 ),
                 self.outLayer
@@ -184,11 +186,11 @@ class MSTParserLSTMModel(nn.Module):
 
     def __evaluateLabel(self, sentence, i, j):
         if sentence[i].rheadfov is None:
-            sentence[i].rheadfov = torch.mm(cat([sentence[i].lstms[0], sentence[i].lstms[1]]),
+            sentence[i].rheadfov = torch.mm(concatenate_tensors([sentence[i].lstms[0], sentence[i].lstms[1]]),
                                             self.rhidLayerFOH)
 
         if sentence[j].rmodfov is None:
-            sentence[j].rmodfov = torch.mm(cat([sentence[j].lstms[0], sentence[j].lstms[1]]),
+            sentence[j].rmodfov = torch.mm(concatenate_tensors([sentence[j].lstms[0], sentence[j].lstms[1]]),
                                            self.rhidLayerFOM)
 
         if self.hidden2_units > 0:
@@ -197,7 +199,7 @@ class MSTParserLSTMModel(nn.Module):
                     self.rhid2Bias +
                     torch.mm(
                         self.activation(
-                            cat([sentence[i].rheadfov, sentence[j].rmodfov]) + self.rcatBias),
+                            concatenate_tensors([sentence[i].rheadfov, sentence[j].rmodfov]) + self.rcatBias),
                         self.rhid2Layer
                     )),
                 self.routLayer
@@ -213,6 +215,7 @@ class MSTParserLSTMModel(nn.Module):
         return get_data(output).numpy()[0], output[0]
 
     def predict(self, sentence):
+        # TODO: Double check this to see if it is really predicting
         for entry in sentence:
             wordvec = self.wlookup(
                 scalar(int(self.vocab.get(entry.norm, 0)))) if self.wdims > 0 else None
@@ -224,7 +227,7 @@ class MSTParserLSTMModel(nn.Module):
                 scalar(int(self.cpos[entry.cpos]))) if self.cdims > 0 else None
             evec = self.elookup(scalar(int(self.extrnd.get(entry.form,
                                                            self.extrnd.get(entry.norm, 0))))) if self.external_embedding is not None else None
-            entry.vec = cat([wordvec, posvec, ontovec, cposvec, evec])
+            entry.vec = concatenate_tensors([wordvec, posvec, ontovec, cposvec, evec])
 
             entry.lstms = [entry.vec, entry.vec]
             entry.headfov = None
@@ -242,7 +245,7 @@ class MSTParserLSTMModel(nn.Module):
         res_back_1, self.hid_back_1 = self.lstm_back_1(
             vec_back, self.hid_back_1)
 
-        vec_cat = [cat([res_for_1[i], res_back_1[num_vec - i - 1]])
+        vec_cat = [concatenate_tensors([res_for_1[i], res_back_1[num_vec - i - 1]])
                    for i in range(num_vec)]
 
         vec_for_2 = torch.cat(vec_cat).view(num_vec, 1, -1)
@@ -270,7 +273,6 @@ class MSTParserLSTMModel(nn.Module):
                 enumerate(scores), key=itemgetter(1))[0]]
 
     def forward(self, sentence, errs, lerrs):
-
         for entry in sentence:
             c = float(self.wordsCount.get(entry.norm, 0))
             # dropFlag = (random.random() < (c / (0.33 + c)))
@@ -283,14 +285,13 @@ class MSTParserLSTMModel(nn.Module):
             ) < 0.9 else 0)) if self.cdims > 0 else None
             posvec = self.plookup(
                 scalar(int(self.pos[entry.pos]))) if self.pdims > 0 else None
-            # posvec = self.plookup(
-            #     scalar(0 if dropFlag and random.random() < 0.1 else int(self.pos[entry.pos]))) if self.pdims > 0 else None
+
             evec = None
             if self.external_embedding is not None:
                 evec = self.elookup(scalar(self.extrnd.get(entry.form, self.extrnd.get(entry.norm, 0)) if (
-                    dropFlag or (random.random() < 0.5)) else 0))
+                        dropFlag or (random.random() < 0.5)) else 0))
 
-            entry.vec = cat([wordvec, posvec, ontovec, cposvec, evec])
+            entry.vec = concatenate_tensors([wordvec, posvec, ontovec, cposvec, evec])
             entry.lstms = [entry.vec, entry.vec]
             entry.headfov = None
             entry.modfov = None
@@ -307,7 +308,7 @@ class MSTParserLSTMModel(nn.Module):
         res_back_1, self.hid_back_1 = self.lstm_back_1(
             vec_back, self.hid_back_1)
 
-        vec_cat = [cat([res_for_1[i], res_back_1[num_vec - i - 1]])
+        vec_cat = [concatenate_tensors([res_for_1[i], res_back_1[num_vec - i - 1]])
                    for i in range(num_vec)]
 
         vec_for_2 = torch.cat(vec_cat).view(num_vec, 1, -1)
@@ -402,22 +403,32 @@ class MSTParserLSTM:
 
                 conll_sentence = [entry for entry in sentence if isinstance(
                     entry, utils.ConllEntry)]
-                e = self.model.forward(conll_sentence, errs, lerrs)
-                eerrors += e
-                eloss += e
-                mloss += e
+                e_output = self.model.forward(conll_sentence, errs, lerrs)
+                # here the errs and lerrs variables have tensor values after the forward
+                eerrors += e_output
+                eloss += e_output
+                mloss += e_output
                 etotal += len(sentence)
                 if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
                     if len(errs) > 0 or len(lerrs) > 0:
-                        eerrs = torch.sum(cat(errs + lerrs))
-                        eerrs.backward()
-                        self.trainer.step()
+                        reshaped_lerrs = [item.reshape(1) for item in lerrs]
+                        l_variable = errs + reshaped_lerrs
+                        eerrs_sum = torch.sum(concatenate_tensors(l_variable))  # This result is a 1d-tensor
+                        eerrs_sum.backward()  # automatically calculates gradient (backpropagation)
+                        # self.print_model_parameters()
+                        self.trainer.step()  # optimizer.step to update weights(to see uncomment print_model_parameters)
+                        # self.print_model_parameters()
                         errs = []
                         lerrs = []
                 self.trainer.zero_grad()
         if len(errs) > 0:
-            eerrs = (torch.sum(errs + lerrs))
-            eerrs.backward()
+            eerrs_sum = (torch.sum(errs + lerrs))
+            eerrs_sum.backward()
             self.trainer.step()
         self.trainer.zero_grad()
         print("Loss: ", mloss / iSentence)
+
+    def print_model_parameters(self):
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                print(name, param.data)

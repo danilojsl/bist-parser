@@ -7,6 +7,7 @@ numberRegex = re.compile("[0-9]+|[0-9]+\\.[0-9]+|[0-9]+[0-9,]+")
 def normalize(word):
     return 'NUM' if numberRegex.match(word) else word.lower()
 
+
 class ConllEntry:
     def __init__(self, id, form, lemma, pos, cpos, feats=None, parent_id=None, relation=None, deps=None, misc=None):
         self.id = id
@@ -32,8 +33,7 @@ class ConllEntry:
 
 
 def read_conll(conllFP):
-    root = ConllEntry(0, '*root*', '*root*', 'ROOT-POS',
-                      'ROOT-CPOS', '_', -1, 'rroot', '_', '_')
+    root = ConllEntry(0, '*root*', '*root*', 'ROOT-POS', 'ROOT-CPOS', '_', -1, 'rroot', '_', '_')
     tokens = [root]
     for line in conllFP:
         tok = line.strip().split('\t')
@@ -73,7 +73,9 @@ def vocab(conll_path):
 
     print('the amount of kind of words, pos-tag, relations, ontology, cpos_tag:',
           len(wordsCount), len(posCount), len(relCount), len(ontoCount), len(cposCount))
-    return (wordsCount, {w: i for i, w in enumerate(wordsCount.keys())}, list(posCount.keys()), list(relCount.keys()), list(ontoCount.keys()), list(cposCount.keys()))
+    enum_words = {w: i for i, w in enumerate(wordsCount.keys())}
+    return (wordsCount, enum_words, list(posCount.keys()),
+            list(relCount.keys()), list(ontoCount.keys()), list(cposCount.keys()))
 
 
 def write_conll(fn, conll_gen):
