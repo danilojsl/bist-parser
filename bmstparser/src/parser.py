@@ -1,13 +1,40 @@
-import multiprocessing
 import os.path
 import pickle
 import time
 from optparse import OptionParser
 
-import torch
-
 import mstlstm
 import utils
+
+
+def evaluate_model():
+    conllu = (os.path.splitext(dev_file.lower())[1] == '.conllu')
+    devpath = os.path.join(output_file,
+                           'dev_epoch_' + str(epoch + 1) + ('.conll' if not conllu else '.conllu'))
+    utils.write_conll(devpath, parser.predict(dev_file))
+
+    if not conllu:
+        perl_command = 'perl ' + utils_path + '/eval.pl -g ' + dev_file + ' -s ' + devpath + ' > ' \
+                       + devpath + '.txt'
+        print(perl_command)
+        os.system(perl_command)
+        with open(devpath + '.txt', 'r') as f:
+            for i in range(0, 3):
+                print(f.readline())
+    else:
+        python_command = 'python3 ' + utils_path + 'evaluation_script/conll17_ud_eval.py -v -w ' + \
+                         utils_path + 'evaluation_script/weights.clas ' + dev_file + ' ' + devpath + ' > ' \
+                         + devpath + '.txt'
+        print(python_command)
+        os.system(python_command)
+        # time.sleep(60)
+        # with open(devpath + '.txt', 'r') as f:
+        #     for l in f:
+        #         if l.startswith('UAS'):
+        #             print('UAS:%s' % l.strip().split()[-1])
+        #         elif l.startswith('LAS'):
+        #             print('LAS:%s' % l.strip().split()[-1])
+
 
 if __name__ == '__main__':
     parser = OptionParser()
@@ -15,8 +42,6 @@ if __name__ == '__main__':
     training_phase = True  # False implies prediction phase
 
     parser.add_option("--outdir", type="string", dest="output", default="/model")
-
-    parser.add_option("--extrn", dest="external_embedding", help="External embeddings", metavar="FILE")
 
     parser.add_option("--numthread", type="int", dest="numthread", default=8)
 
@@ -63,11 +88,11 @@ if __name__ == '__main__':
                           default="/model/neuralfirstorder.model3")
 
     (options, args) = parser.parse_args()
-    max_thread = multiprocessing.cpu_count()
-    active_thread = options.numthread if max_thread > options.numthread else max_thread
-    torch.set_num_threads(active_thread)
-    print(active_thread, "threads are in use")
-    print('Using external embedding:', options.external_embedding)
+    # TODO: Check if we can add operation parallelism on CPU with Tensorflow
+    # max_thread = multiprocessing.cpu_count()
+    # active_thread = options.numthread if max_thread > options.numthread else max_thread
+    # torch.set_num_threads(active_thread)
+    # print(active_thread, "threads are in use")
 
     # Added to run from IntelliJ
     os.chdir("../../")
@@ -85,8 +110,6 @@ if __name__ == '__main__':
 
         with open(params_file, 'rb') as paramsfp:
             words, enum_word, pos, rels, onto, cpos, stored_opt = pickle.load(paramsfp)
-
-        stored_opt.external_embedding = options.external_embedding
 
         print('Initializing lstm mstparser:')
         parser = mstlstm.MSTParserLSTM(words, pos, rels, enum_word, stored_opt, onto, cpos)
@@ -114,6 +137,7 @@ if __name__ == '__main__':
                     elif l.startswith('LAS'):
                         print('LAS:%s' % l.strip().split()[-1])
     else:
+        # Training classifier
         # Added to run from IntelliJ
         train_file = os.getcwd() + options.conll_train
         dev_file = os.getcwd() + options.conll_dev
@@ -128,33 +152,10 @@ if __name__ == '__main__':
 
         print('Initializing mst-parser:')
         parser = mstlstm.MSTParserLSTM(words, pos, rels, enum_word, options, onto, cpos)
-
         for epoch in range(options.epochs):
             print('Starting epoch', epoch)
             parser.train(train_file)
-            conllu = (os.path.splitext(dev_file.lower())[1] == '.conllu')
-            devpath = os.path.join(output_file,
-                                   'dev_epoch_' + str(epoch + 1) + ('.conll' if not conllu else '.conllu'))
-            utils.write_conll(devpath, parser.predict(dev_file))
             parser.save(os.path.join(output_file, os.path.basename(model_path) + str(epoch + 1)))
-            if not conllu:
-                perl_command = 'perl ' + utils_path + '/eval.pl -g ' + dev_file + ' -s ' + devpath + ' > ' \
-                               + devpath + '.txt'
-                print(perl_command)
-                os.system(perl_command)
-                with open(devpath + '.txt', 'r') as f:
-                    for i in range(0, 3):
-                        print(f.readline())
-            else:
-                python_command = 'python3 ' + utils_path + 'evaluation_script/conll17_ud_eval.py -v -w ' + \
-                                 utils_path + 'evaluation_script/weights.clas ' + dev_file + ' ' + devpath + ' > ' \
-                                 + devpath + '.txt'
-                print(python_command)
-                os.system(python_command)
-                # time.sleep(60)
-                # with open(devpath + '.txt', 'r') as f:
-                #     for l in f:
-                #         if l.startswith('UAS'):
-                #             print('UAS:%s' % l.strip().split()[-1])
-                #         elif l.startswith('LAS'):
-                #             print('LAS:%s' % l.strip().split()[-1])
+            # evaluate_model()
+
+

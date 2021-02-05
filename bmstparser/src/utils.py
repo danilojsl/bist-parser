@@ -1,5 +1,5 @@
-from collections import Counter
 import re
+from collections import Counter
 
 numberRegex = re.compile("[0-9]+|[0-9]+\\.[0-9]+|[0-9]+[0-9,]+")
 

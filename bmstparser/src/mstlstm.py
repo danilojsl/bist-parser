@@ -1,17 +1,18 @@
-import shutil
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.nn.init import *
-from torch import optim
-from utils import read_conll
-from operator import itemgetter
-import utils
-import time
 import random
-import decoder
+import shutil
+import time
+from operator import itemgetter
+
 import numpy as np
 import torch.autograd as autograd
-import os
+import torch.nn as nn
+import torch.nn.functional as F
+from torch import optim
+from torch.nn.init import *
+
+import decoder
+import utils
+from utils import read_conll
 
 use_gpu = True if torch.cuda.is_available() else False
 
@@ -84,33 +85,14 @@ class MSTParserLSTMModel(nn.Module):
         self.onto['*INITIAL*'] = 2
         self.cpos['*INITIAL*'] = 2
 
-        self.external_embedding, self.edim = None, 0
-
-        if options.external_embedding is not None:
-            external_embedding_fp = open(options.external_embedding, 'r')
-            external_embedding_fp.readline()
-            self.external_embedding = {line.split(' ')[0]: [float(f) for f in line.strip().split(' ')[1:]] for line in
-                                       external_embedding_fp}
-            external_embedding_fp.close()
-            self.edim = len(list(self.external_embedding.values())[0])
-            self.extrnd = {word: i + 3 for i,
-                                           word in enumerate(self.external_embedding)}
-            np_emb = np.zeros((len(self.external_embedding) + 3, self.edim))
-            for word, i in self.extrnd.items():
-                np_emb[i] = self.external_embedding[word]
-            self.elookup = nn.Embedding(*np_emb.shape)
-            self.elookup.weight = Parameter(init=np_emb)
-            self.extrnd['*PAD*'] = 1
-            self.extrnd['*INITIAL*'] = 2
-            print('Load external embedding. Vector dimensions', self.edim)
+        self.edim = 0
 
         # prepare LSTM
-        self.lstm_for_1 = nn.LSTM(
-            self.wdims + self.pdims + self.edim + self.odims + self.cdims, self.ldims)
-        self.lstm_back_1 = nn.LSTM(
-            self.wdims + self.pdims + self.edim + self.odims + self.cdims, self.ldims)
-        self.lstm_for_2 = nn.LSTM(self.ldims * 2, self.ldims)
-        self.lstm_back_2 = nn.LSTM(self.ldims * 2, self.ldims)
+        number_features = self.wdims + self.pdims + self.edim + self.odims + self.cdims
+        self.lstm_for_1 = nn.LSTM(input_size=number_features, hidden_size=self.ldims)
+        self.lstm_back_1 = nn.LSTM(input_size=number_features, hidden_size=self.ldims)
+        self.lstm_for_2 = nn.LSTM(input_size=self.ldims * 2, hidden_size=self.ldims)
+        self.lstm_back_2 = nn.LSTM(input_size=self.ldims * 2, hidden_size=self.ldims)
         self.hid_for_1, self.hid_back_1, self.hid_for_2, self.hid_back_2 = [
             self.init_hidden(self.ldims) for _ in range(4)]
 
@@ -215,7 +197,6 @@ class MSTParserLSTMModel(nn.Module):
         return get_data(output).numpy()[0], output[0]
 
     def predict(self, sentence):
-        # TODO: Double check this to see if it is really predicting
         for entry in sentence:
             wordvec = self.wlookup(
                 scalar(int(self.vocab.get(entry.norm, 0)))) if self.wdims > 0 else None
@@ -225,8 +206,7 @@ class MSTParserLSTMModel(nn.Module):
                 scalar(int(self.onto[entry.onto]))) if self.odims > 0 else None
             cposvec = self.clookup(
                 scalar(int(self.cpos[entry.cpos]))) if self.cdims > 0 else None
-            evec = self.elookup(scalar(int(self.extrnd.get(entry.form,
-                                                           self.extrnd.get(entry.norm, 0))))) if self.external_embedding is not None else None
+            evec = None  # Used for external embeddings
             entry.vec = concatenate_tensors([wordvec, posvec, ontovec, cposvec, evec])
 
             entry.lstms = [entry.vec, entry.vec]
@@ -287,10 +267,7 @@ class MSTParserLSTMModel(nn.Module):
                 scalar(int(self.pos[entry.pos]))) if self.pdims > 0 else None
 
             evec = None
-            if self.external_embedding is not None:
-                evec = self.elookup(scalar(self.extrnd.get(entry.form, self.extrnd.get(entry.norm, 0)) if (
-                        dropFlag or (random.random() < 0.5)) else 0))
-
+            # The dot notation create attributes for the class ConllEntry in run time (mind-blowing isn't it...)
             entry.vec = concatenate_tensors([wordvec, posvec, ontovec, cposvec, evec])
             entry.lstms = [entry.vec, entry.vec]
             entry.headfov = None
@@ -300,13 +277,12 @@ class MSTParserLSTMModel(nn.Module):
             entry.rmodfov = None
 
         num_vec = len(sentence)
-        vec_for = torch.cat(
-            [entry.vec for entry in sentence]).view(num_vec, 1, -1)
-        vec_back = torch.cat(
-            [entry.vec for entry in reversed(sentence)]).view(num_vec, 1, -1)
+        features_for = [entry.vec for entry in sentence]
+        features_back = [entry.vec for entry in reversed(sentence)]
+        vec_for = torch.cat(features_for).view(num_vec, 1, -1)
+        vec_back = torch.cat(features_back).view(num_vec, 1, -1)
         res_for_1, self.hid_for_1 = self.lstm_for_1(vec_for, self.hid_for_1)
-        res_back_1, self.hid_back_1 = self.lstm_back_1(
-            vec_back, self.hid_back_1)
+        res_back_1, self.hid_back_1 = self.lstm_back_1(vec_back, self.hid_back_1)
 
         vec_cat = [concatenate_tensors([res_for_1[i], res_back_1[num_vec - i - 1]])
                    for i in range(num_vec)]
