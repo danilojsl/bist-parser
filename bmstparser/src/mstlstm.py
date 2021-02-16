@@ -44,7 +44,8 @@ def scalar(f):
 
 
 def concatenate_tensors(l, dimension=-1):
-    valid_l = [x for x in l if x is not None]
+    # dimension is always -1
+    valid_l = [x for x in l if x is not None]  # This code removes None elements from an array
     if dimension < 0:
         dimension += len(valid_l[0].size())
     return torch.cat(valid_l, dimension)
@@ -189,8 +190,7 @@ class MSTParserLSTMModel(nn.Module):
 
         else:
             output = torch.mm(
-                self.activation(sentence[i].rheadfov +
-                                sentence[j].rmodfov + self.rhidBias),
+                self.activation(sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias),
                 self.routLayer
             ) + self.routBias
 
@@ -267,7 +267,6 @@ class MSTParserLSTMModel(nn.Module):
                 scalar(int(self.pos[entry.pos]))) if self.pdims > 0 else None
 
             evec = None
-            # The dot notation create attributes for the class ConllEntry in run time (mind-blowing isn't it...)
             entry.vec = concatenate_tensors([wordvec, posvec, ontovec, cposvec, evec])
             entry.lstms = [entry.vec, entry.vec]
             entry.headfov = None
@@ -290,8 +289,7 @@ class MSTParserLSTMModel(nn.Module):
         vec_for_2 = torch.cat(vec_cat).view(num_vec, 1, -1)
         vec_back_2 = torch.cat(list(reversed(vec_cat))).view(num_vec, 1, -1)
         res_for_2, self.hid_for_2 = self.lstm_for_2(vec_for_2, self.hid_for_2)
-        res_back_2, self.hid_back_2 = self.lstm_back_2(
-            vec_back_2, self.hid_back_2)
+        res_back_2, self.hid_back_2 = self.lstm_back_2(vec_back_2, self.hid_back_2)
 
         for i in range(num_vec):
             sentence[i].lstms[0] = res_for_2[i]
@@ -302,8 +300,7 @@ class MSTParserLSTMModel(nn.Module):
         heads = decoder.parse_proj(scores, gold)
 
         for modifier, head in enumerate(gold[1:]):
-            rscores, rexprs = self.__evaluateLabel(
-                sentence, head, modifier + 1)
+            rscores, rexprs = self.__evaluateLabel(sentence, head, modifier + 1)
             goldLabelInd = self.rels[sentence[modifier + 1].relation]
             wrongLabelInd = \
                 max(((l, scr) for l, scr in enumerate(rscores)
@@ -365,6 +362,7 @@ class MSTParserLSTM:
             errs = []
             lerrs = []
             for iSentence, sentence in enumerate(shuffledData):
+                # print("Initializing all values to 0")
                 self.model.hid_for_1, self.model.hid_back_1, self.model.hid_for_2, self.model.hid_back_2 = [
                     self.model.init_hidden(self.model.ldims) for _ in range(4)]
                 if iSentence % 100 == 0 and iSentence != 0:

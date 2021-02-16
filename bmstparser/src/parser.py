@@ -88,7 +88,7 @@ if __name__ == '__main__':
                           default="/model/neuralfirstorder.model3")
 
     (options, args) = parser.parse_args()
-    # TODO: Check if we can add operation parallelism on CPU with Tensorflow
+    # TODO: Uncomment multiprocess when not debugging
     # max_thread = multiprocessing.cpu_count()
     # active_thread = options.numthread if max_thread > options.numthread else max_thread
     # torch.set_num_threads(active_thread)
