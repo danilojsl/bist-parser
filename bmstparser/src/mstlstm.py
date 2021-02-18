@@ -396,6 +396,8 @@ class MSTParserLSTM:
                         lerrs = []
                 self.trainer.zero_grad()
         if len(errs) > 0:
+            # TODO: Remove from 398 to 404 and check accuracy to remove this
+            print("******* In out errs...")
             eerrs_sum = (torch.sum(errs + lerrs))
             eerrs_sum.backward()
             self.trainer.step()

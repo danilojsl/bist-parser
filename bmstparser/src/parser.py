@@ -48,9 +48,9 @@ if __name__ == '__main__':
     if training_phase:
         parser.add_option("--predict", action="store_true", dest="predictFlag", default=False)
         parser.add_option("--train", dest="conll_train", help="Annotated CONLL train file", metavar="FILE",
-                          default="/corpus/en-small-ud-train.conllu")
+                          default="/corpus/en-mid-ud-train.conllu")
         parser.add_option("--dev", dest="conll_dev", help="Annotated CONLL dev file", metavar="FILE",
-                          default="/corpus/en-small-ud-dev.conllu")
+                          default="/corpus/en-mid-ud-dev.conllu")
 
         parser.add_option("--multi", dest="multi", help="Annotated CONLL multi-train file", metavar="FILE",
                           default=False)

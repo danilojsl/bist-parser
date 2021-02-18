@@ -1,8 +1,8 @@
 import random
+import time
 from operator import itemgetter
 
 import numpy as np
-import time
 import tensorflow as tf
 import tensorflow.keras.activations as F
 from tensorflow.keras.layers import Embedding
@@ -271,11 +271,18 @@ class MSTParserLSTMModel:
         return output.numpy()[0], output[0]
 
 
+def get_optim(opt):
+    if opt.optim == 'sgd':
+        return tf.keras.optimizers.SGD(learning_rate=opt.lr)
+    elif opt.optim == 'adam':
+        return tf.keras.optimizers.Adam(learning_rate=opt.lr)
+
+
 class MSTParserLSTM:
 
     def __init__(self, vocab, pos, rels, enum_word, options, onto, cpos):
         self.model = MSTParserLSTMModel(vocab, pos, rels, enum_word, options, onto, cpos)
-        self.trainer = tf.keras.optimizers.SGD(learning_rate=0.1)
+        self.trainer = get_optim(options)
 
     def train(self, conll_path):
         print('tensorflow version: ', tf.version.VERSION)
@@ -319,15 +326,15 @@ class MSTParserLSTM:
                             l_variable = errs + reshaped_lerrs
                             eerrs_sum = tf.reduce_sum(concatenate_arrays(l_variable, 'tensor'))
 
-                    if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
-                        if len(errs) > 0 or len(lerrs) > 0:
-                            grads = tape.gradient(eerrs_sum, self.model.sources)
-                            # print("Before apply gradients")
-                            # print(self.model.sources)
-                            self.trainer.apply_gradients(zip(grads, self.model.sources))
-                            # print("After apply gradients")
-                            # print(self.model.sources)
-                            errs = []
-                            lerrs = []
+                if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
+                    if len(errs) > 0 or len(lerrs) > 0:
+                        grads = tape.gradient(eerrs_sum, self.model.sources)
+                        # print("Before apply gradients")
+                        # print(self.model.sources)
+                        self.trainer.apply_gradients(zip(grads, self.model.sources))
+                        # print("After apply gradients")
+                        # print(self.model.sources)
+                        errs = []
+                        lerrs = []
 
         print("Loss: ", mloss / iSentence)

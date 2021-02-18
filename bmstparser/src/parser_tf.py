@@ -1,9 +1,10 @@
-import os.path
+import os
 from optparse import OptionParser
+
+import tensorflow as tf
 
 import mstlstm_tf
 import utils
-import tensorflow as tf
 
 if __name__ == '__main__':
     parser = OptionParser()
@@ -74,13 +75,16 @@ if __name__ == '__main__':
     # Added to run from IntelliJ
 
     print('Preparing vocabulary table')
-
     words, enum_word, pos, rels, onto, cpos = list(utils.vocab(train_file))
     # TODO: Check if pickle serialization is required
     print('Finished collecting vocabulary')
+
     print('Initializing mst-parser:')
+    tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     tf.compat.v1.enable_eager_execution()
     parser = mstlstm_tf.MSTParserLSTM(words, pos, rels, enum_word, options, onto, cpos)
     for epoch in range(options.epochs):
         print('Starting epoch', epoch)
         parser.train(train_file)
+        # tf.saved_model.save(parser, "/home/dburbano/IdeaProjects/JSL/bist-parser-tensorflow/model-tf")
+        # tf.saved_model.simple_save()
