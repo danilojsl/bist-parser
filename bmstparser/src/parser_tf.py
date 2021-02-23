@@ -11,8 +11,7 @@ if __name__ == '__main__':
 
     training_phase = True  # False implies prediction phase
 
-    parser.add_option("--outdir", type="string", dest="output", default="/model")
-
+    parser.add_option("--outdir", type="string", dest="output", default="/model-tf")
     parser.add_option("--numthread", type="int", dest="numthread", default=8)
 
     if training_phase:
@@ -86,5 +85,5 @@ if __name__ == '__main__':
     for epoch in range(options.epochs):
         print('Starting epoch', epoch)
         parser.train(train_file)
-        # tf.saved_model.save(parser, "/home/dburbano/IdeaProjects/JSL/bist-parser-tensorflow/model-tf")
-        # tf.saved_model.simple_save()
+        # parser.save(os.path.join(output_file, os.path.basename(model_path) + str(epoch + 1)))
+        # parser.save("/home/dburbano/IdeaProjects/JSL/bist-parser-tensorflow/model-tf")

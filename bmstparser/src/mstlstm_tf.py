@@ -1,4 +1,5 @@
 import random
+import shutil
 import time
 from operator import itemgetter
 
@@ -37,24 +38,18 @@ def Parameter(shape=None, name='param'):
     return tf.Variable(random_tensor, name=name)
 
 
-class MSTParserLSTMModel:
+class MSTParserLSTMModel(tf.keras.Model):
 
     def __init__(self, vocab, pos, rels, enum_word, options, onto, cpos):
+        super(MSTParserLSTMModel, self).__init__()
         random.seed(1)
 
-        # Activation Functions (For MLP??)
+        # Activation Functions for MLP
         self.activations = {'tanh': F.tanh, 'sigmoid': F.sigmoid, 'relu': F.relu}
         self.activation = self.activations[options.activation]
 
         # Input data
         self.sample_size = 1  # batch size
-
-        # Variables required for prediction
-        # TODO: Check if this variables are really required at this level
-        # self.hid_for_1 = ()
-        # self.hid_back_1 = ()
-        # self.hid_for_2 = ()
-        # self.hid_back_2 = ()
 
         # Embeddings layers
         self.ldims = options.lstm_dims
@@ -87,6 +82,17 @@ class MSTParserLSTMModel:
         self.rlookup = Sequential(Embedding(len(rels) + 3, self.rdims))
         self.olookup = Sequential(Embedding(len(onto) + 3, self.odims))
         self.clookup = Sequential(Embedding(len(cpos) + 3, self.cdims))
+
+        # LSTM Network architecture
+        # First LSTM Layer
+        self.lstm_for_1 = LSTM(self.ldims, return_sequences=True, return_state=True)
+        self.lstm_back_1 = LSTM(self.ldims, return_sequences=True, return_state=True)
+        # Second LSTM Layer
+        self.lstm_for_2 = LSTM(self.ldims, return_sequences=True, return_state=True)
+        self.lstm_back_2 = LSTM(self.ldims, return_sequences=True, return_state=True)
+        # Initializing hidden and cell states values to 0
+        self.hid_for_1, self.hid_back_1, self.hid_for_2, self.hid_back_2 = [
+            self.init_hidden(self.ldims) for _ in range(4)]
 
         # Weight Initialization
         self.hidden_units = options.hidden_units
@@ -125,40 +131,33 @@ class MSTParserLSTMModel:
             (self.hidden2_units if self.hidden2_units > 0 else self.hidden_units, len(self.rel_list)), 'routLayer')
         self.routBias = Parameter((len(self.rel_list)), 'routBias')
 
+    def init_hidden(self, dim):
+        return tf.zeros(shape=[1, dim]), tf.zeros(shape=[1, dim])
+
     def forward(self, sentence, errs, lerrs):
 
         self.process_sentence_embeddings(sentence)
         # TODO: Define LSTM architecture on each iteration based on sentence length (time steps)
         num_vec = len(sentence)  # time steps
 
-        # LSTM Network architecture
-        # First LSTM Layer
-        number_features = self.wdims + self.pdims + self.edim + self.odims + self.cdims
-        lstm_for_1 = self.prepare_lstm_model(num_vec, number_features, self.ldims)
-        lstm_back_1 = self.prepare_lstm_model(num_vec, number_features, self.ldims)
-
-        # Second LSTM Layer
-        lstm_for_2 = self.prepare_lstm_model(num_vec, self.ldims * 2, self.ldims)
-        lstm_back_2 = self.prepare_lstm_model(num_vec, self.ldims * 2, self.ldims)
-
         features_for = [entry.vec for entry in sentence]
         features_back = [entry.vec for entry in reversed(sentence)]
         vec_for = np.concatenate(features_for).reshape(self.sample_size, num_vec, -1)
         vec_back = np.concatenate(features_back).reshape(self.sample_size, num_vec, -1)
 
-        res_for_1, hid_for_1 = self.get_lstm_output(lstm_for_1, vec_for)
-        res_back_1, hid_back_1 = self.get_lstm_output(lstm_back_1, vec_back)
+        res_for_1, self.hid_for_1 = self.get_lstm_output(self.lstm_for_1, vec_for, self.hid_for_1)
+        res_back_1, self.hid_back_1 = self.get_lstm_output(self.lstm_back_1, vec_back, self.hid_back_1)
 
         vec_cat = concatenate_layers(res_for_1[0], res_back_1[0], num_vec)
         vec_for_2 = np.concatenate(vec_cat).reshape(self.sample_size, num_vec, -1)
         vec_back_2 = np.concatenate(list(reversed(vec_cat))).reshape(self.sample_size, num_vec, -1)
 
-        res_for_2, hid_for_2 = self.get_lstm_output(lstm_for_2, vec_for_2)
-        res_back_2, hid_back_2 = self.get_lstm_output(lstm_back_2, vec_back_2)
+        res_for_2, self.hid_for_2 = self.get_lstm_output(self.lstm_for_2, vec_for_2, self.hid_for_2)
+        res_back_2, self.hid_back_2 = self.get_lstm_output(self.lstm_back_2, vec_back_2, self.hid_back_2)
 
         for i in range(num_vec):
-            sentence[i].lstms[0] = res_for_2.reshape(num_vec, self.ldims)[i]
-            sentence[i].lstms[1] = res_back_2.reshape(num_vec, self.ldims)[num_vec - i - 1]
+            sentence[i].lstms[0] = tf.reshape(res_for_2, shape=[num_vec, self.ldims])[i]
+            sentence[i].lstms[1] = tf.reshape(res_back_2, shape=[num_vec, self.ldims])[num_vec - i - 1]
 
         scores, exprs = self.__evaluate(sentence)
         gold = [entry.parent_id for entry in sentence]
@@ -209,9 +208,8 @@ class MSTParserLSTMModel:
         return lstm_model
 
     @staticmethod
-    def get_lstm_output(lstm_model, input_sequence):
-        # lstm_model.summary()
-        output = lstm_model.predict(input_sequence)
+    def get_lstm_output(lstm_model, input_sequence, initial_state):
+        output = lstm_model(input_sequence, initial_state=initial_state)
         hidden_states, hidden_state, cell_state = output[0], output[1], output[2]
         return hidden_states, (hidden_state, cell_state)
 
@@ -265,7 +263,7 @@ class MSTParserLSTMModel:
             next_activation_result = self.activation(self.rhid2Bias + matmul_result)
             output = tf.matmul(next_activation_result, self.routLayer) + self.routBias
         else:
-            activation_result = (sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias)
+            activation_result = self.activation(sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias)
             output = tf.matmul(activation_result, self.routLayer) + self.routBias
 
         return output.numpy()[0], output[0]
@@ -299,6 +297,12 @@ class MSTParserLSTM:
             errs = []
             lerrs = []
             for iSentence, sentence in enumerate(shuffledData):
+                # print("Initializing hidden and cell states values to 0")
+                self.model.hid_for_1, self.model.hid_back_1, self.model.hid_for_2, self.model.hid_back_2 = [
+                    self.model.init_hidden(self.model.ldims) for _ in range(4)]
+                # if iSentence == 0:
+                #     print('hidLayerFOM values on first iteration within an epoch')
+                #     print(self.model.hidLayerFOM)
                 if iSentence % 100 == 0 and iSentence != 0:
                     print('Processing sentence number:', iSentence,
                           'Loss:', eloss / etotal,
@@ -308,6 +312,8 @@ class MSTParserLSTM:
                     eerrors = 0
                     eloss = 0.0
                     etotal = 0
+                    # print('hidLayerFOM values:')
+                    # print(self.model.hidLayerFOM)
 
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
 
@@ -336,5 +342,13 @@ class MSTParserLSTM:
                         # print(self.model.sources)
                         errs = []
                         lerrs = []
-
+        # # if len(shuffledData) - 1 == iSentence:
+        #     print('hidLayerFOM values on last iteration within an epoch')
+        #     print(self.model.hidLayerFOM)
         print("Loss: ", mloss / iSentence)
+
+    def save(self, fn):
+        tmp = fn + '.tmp'
+        tf.saved_model.save(self.model, tmp)
+        shutil.move(tmp, fn)
+        # tf.saved_model.simple_save
