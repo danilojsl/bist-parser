@@ -1,4 +1,5 @@
 import random
+import shutil
 import time
 from operator import itemgetter
 
@@ -37,12 +38,13 @@ def Parameter(shape=None, name='param'):
     return tf.Variable(random_tensor, name=name)
 
 
-class MSTParserLSTMModel:
+class MSTParserLSTMModel(tf.keras.Model):
 
     def __init__(self, vocab, pos, rels, enum_word, options, onto, cpos):
+        super(MSTParserLSTMModel, self).__init__()
         random.seed(1)
 
-        # Activation Functions (For MLP??)
+        # Activation Functions for MLP
         self.activations = {'tanh': F.tanh, 'sigmoid': F.sigmoid, 'relu': F.relu}
         self.activation = self.activations[options.activation]
 
@@ -265,7 +267,7 @@ class MSTParserLSTMModel:
             next_activation_result = self.activation(self.rhid2Bias + matmul_result)
             output = tf.matmul(next_activation_result, self.routLayer) + self.routBias
         else:
-            activation_result = (sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias)
+            activation_result = self.activation(sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias)
             output = tf.matmul(activation_result, self.routLayer) + self.routBias
 
         return output.numpy()[0], output[0]
@@ -338,3 +340,9 @@ class MSTParserLSTM:
                         lerrs = []
 
         print("Loss: ", mloss / iSentence)
+
+    def save(self, fn):
+        tmp = fn + '.tmp'
+        tf.saved_model.save(self.model, tmp)
+        shutil.move(tmp, fn)
+        # tf.saved_model.simple_save
