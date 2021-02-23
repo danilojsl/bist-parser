@@ -74,8 +74,6 @@ class MSTParserLSTMModel(nn.Module):
         self.cpos = {word: ind + 3 for ind, word in enumerate(cpos)}
         self.rels = {word: ind for ind, word in enumerate(rels)}
         self.rel_list = rels
-        self.hidden_units = options.hidden_units
-        self.hidden2_units = options.hidden2_units
 
         self.vocab['*PAD*'] = 1
         self.pos['*PAD*'] = 1
@@ -103,6 +101,8 @@ class MSTParserLSTMModel(nn.Module):
         self.olookup = nn.Embedding(len(onto) + 3, self.odims)
         self.clookup = nn.Embedding(len(cpos) + 3, self.cdims)
 
+        self.hidden_units = options.hidden_units
+        self.hidden2_units = options.hidden2_units
         self.hidLayerFOH = Parameter((self.ldims * 2, self.hidden_units))
         self.hidLayerFOM = Parameter((self.ldims * 2, self.hidden_units))
         self.hidBias = Parameter((self.hidden_units))
@@ -131,36 +131,30 @@ class MSTParserLSTMModel(nn.Module):
         return (autograd.Variable(torch.zeros(1, 1, dim).cuda() if use_gpu else torch.zeros(1, 1, dim)),
                 autograd.Variable(torch.zeros(1, 1, dim).cuda() if use_gpu else torch.zeros(1, 1, dim)))
 
-    def __getExpr(self, sentence, i, j, train):
+    def __getExpr(self, sentence, i, j):
 
         if sentence[i].headfov is None:
-            l_variable = [sentence[i].lstms[0], sentence[i].lstms[1]]
-            sentence[i].headfov = torch.mm(concatenate_tensors(l_variable), self.hidLayerFOH)
+            concatenated_lstm = concatenate_tensors([sentence[i].lstms[0], sentence[i].lstms[1]])
+            sentence[i].headfov = torch.mm(concatenated_lstm, self.hidLayerFOH)
 
         if sentence[j].modfov is None:
-            l_variable = [sentence[j].lstms[0], sentence[j].lstms[1]]
-            sentence[j].modfov = torch.mm(concatenate_tensors(l_variable),
-                                          self.hidLayerFOM)
+            concatenated_lstm = concatenate_tensors([sentence[j].lstms[0], sentence[j].lstms[1]])
+            sentence[j].modfov = torch.mm(concatenated_lstm, self.hidLayerFOM)
 
         if self.hidden2_units > 0:
-            output = torch.mm(
-                self.activation(
-                    self.hid2Bias +
-                    torch.mm(self.activation(concatenate_tensors([sentence[i].headfov, sentence[j].modfov]) + self.catBias),
-                             self.hid2Layer)
-                ),
-                self.outLayer
-            ) + self.outBias
-
+            concatenated_result = concatenate_tensors([sentence[i].headfov, sentence[j].modfov])
+            activation_result = self.activation(concatenated_result + self.catBias)
+            mm_result = torch.mm(activation_result, self.hid2Layer)
+            next_activation_result = self.activation(self.hid2Bias + mm_result)
+            output = torch.mm(next_activation_result, self.outLayer) + self.outBias
         else:
-            output = torch.mm(
-                self.activation(
-                    sentence[i].headfov + sentence[j].modfov + self.hidBias),
-                self.outLayer) + self.outBias
+            activation_result = self.activation(sentence[i].headfov + sentence[j].modfov + self.hidBias)
+            output = torch.mm(activation_result, self.outLayer) + self.outBias
+
         return output
 
-    def __evaluate(self, sentence, train):
-        exprs = [[self.__getExpr(sentence, i, j, train)
+    def __evaluate(self, sentence):
+        exprs = [[self.__getExpr(sentence, i, j)
                   for j in range(len(sentence))]
                  for i in range(len(sentence))]
         scores = np.array([[get_data(output).numpy()[0, 0]
@@ -177,22 +171,14 @@ class MSTParserLSTMModel(nn.Module):
                                            self.rhidLayerFOM)
 
         if self.hidden2_units > 0:
-            output = torch.mm(
-                self.activation(
-                    self.rhid2Bias +
-                    torch.mm(
-                        self.activation(
-                            concatenate_tensors([sentence[i].rheadfov, sentence[j].rmodfov]) + self.rcatBias),
-                        self.rhid2Layer
-                    )),
-                self.routLayer
-            ) + self.routBias
-
+            concatenated_result = concatenate_tensors([sentence[i].rheadfov, sentence[j].rmodfov])
+            activation_result = self.activation(concatenated_result + self.rcatBias)
+            matmul_result = torch.mm(activation_result, self.rhid2Layer)
+            next_activation_result = self.activation(self.rhid2Bias + matmul_result)
+            output = torch.mm(next_activation_result, self.routLayer) + self.routBias
         else:
-            output = torch.mm(
-                self.activation(sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias),
-                self.routLayer
-            ) + self.routBias
+            activation_result = self.activation(sentence[i].rheadfov + sentence[j].rmodfov + self.rhidBias)
+            output = torch.mm(activation_result, self.routLayer) + self.routBias
 
         return get_data(output).numpy()[0], output[0]
 
@@ -253,27 +239,8 @@ class MSTParserLSTMModel(nn.Module):
                 enumerate(scores), key=itemgetter(1))[0]]
 
     def forward(self, sentence, errs, lerrs):
-        for entry in sentence:
-            c = float(self.wordsCount.get(entry.norm, 0))
-            # dropFlag = (random.random() < (c / (0.33 + c)))
-            dropFlag = (random.random() < (c / (0.25 + c)))
-            wordvec = self.wlookup(scalar(
-                int(self.vocab.get(entry.norm, 0)) if dropFlag else 0)) if self.wdims > 0 else None
-            ontovec = self.olookup(scalar(int(self.onto[entry.onto]) if random.random(
-            ) < 0.9 else 0)) if self.odims > 0 else None
-            cposvec = self.clookup(scalar(int(self.cpos[entry.cpos]) if random.random(
-            ) < 0.9 else 0)) if self.cdims > 0 else None
-            posvec = self.plookup(
-                scalar(int(self.pos[entry.pos]))) if self.pdims > 0 else None
 
-            evec = None
-            entry.vec = concatenate_tensors([wordvec, posvec, ontovec, cposvec, evec])
-            entry.lstms = [entry.vec, entry.vec]
-            entry.headfov = None
-            entry.modfov = None
-
-            entry.rheadfov = None
-            entry.rmodfov = None
+        self.process_sentence_embeddings(sentence)
 
         num_vec = len(sentence)
         features_for = [entry.vec for entry in sentence]
@@ -295,7 +262,7 @@ class MSTParserLSTMModel(nn.Module):
             sentence[i].lstms[0] = res_for_2[i]
             sentence[i].lstms[1] = res_back_2[num_vec - i - 1]
 
-        scores, exprs = self.__evaluate(sentence, True)
+        scores, exprs = self.__evaluate(sentence)
         gold = [entry.parent_id for entry in sentence]
         heads = decoder.parse_proj(scores, gold)
 
@@ -313,6 +280,29 @@ class MSTParserLSTMModel(nn.Module):
             errs += [(exprs[h][i] - exprs[g][i])[0]
                      for i, (h, g) in enumerate(zip(heads, gold)) if h != g]
         return e
+
+    def process_sentence_embeddings(self, sentence):
+        for entry in sentence:
+            c = float(self.wordsCount.get(entry.norm, 0))
+            # dropFlag = (random.random() < (c / (0.33 + c)))
+            dropFlag = (random.random() < (c / (0.25 + c)))
+            wordvec = self.wlookup(scalar(
+                int(self.vocab.get(entry.norm, 0)) if dropFlag else 0)) if self.wdims > 0 else None
+            ontovec = self.olookup(scalar(int(self.onto[entry.onto]) if random.random(
+            ) < 0.9 else 0)) if self.odims > 0 else None
+            cposvec = self.clookup(scalar(int(self.cpos[entry.cpos]) if random.random(
+            ) < 0.9 else 0)) if self.cdims > 0 else None
+            posvec = self.plookup(
+                scalar(int(self.pos[entry.pos]))) if self.pdims > 0 else None
+
+            evec = None
+            entry.vec = concatenate_tensors([wordvec, posvec, ontovec, cposvec, evec])
+            entry.lstms = [entry.vec, entry.vec]
+            entry.headfov = None
+            entry.modfov = None
+
+            entry.rheadfov = None
+            entry.rmodfov = None
 
 
 def get_optim(opt, parameters):
@@ -362,9 +352,12 @@ class MSTParserLSTM:
             errs = []
             lerrs = []
             for iSentence, sentence in enumerate(shuffledData):
-                # print("Initializing all values to 0")
+                # print("Initializing hidden and cell states values to 0")
                 self.model.hid_for_1, self.model.hid_back_1, self.model.hid_for_2, self.model.hid_back_2 = [
                     self.model.init_hidden(self.model.ldims) for _ in range(4)]
+                # if iSentence == 0:
+                #     print('hidLayerFOM values on first iteration within an epoch')
+                #     print(self.model.hidLayerFOM)
                 if iSentence % 100 == 0 and iSentence != 0:
                     print('Processing sentence number:', iSentence,
                           'Loss:', eloss / etotal,
@@ -374,9 +367,11 @@ class MSTParserLSTM:
                     eerrors = 0
                     eloss = 0.0
                     etotal = 0
+                    # print('hidLayerFOM values:')
+                    # print(self.model.hidLayerFOM)
 
-                conll_sentence = [entry for entry in sentence if isinstance(
-                    entry, utils.ConllEntry)]
+                conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
+
                 e_output = self.model.forward(conll_sentence, errs, lerrs)
                 # here the errs and lerrs variables have tensor values after the forward
                 eerrors += e_output
@@ -395,13 +390,9 @@ class MSTParserLSTM:
                         errs = []
                         lerrs = []
                 self.trainer.zero_grad()
-        if len(errs) > 0:
-            # TODO: Remove from 398 to 404 and check accuracy to remove this
-            print("******* In out errs...")
-            eerrs_sum = (torch.sum(errs + lerrs))
-            eerrs_sum.backward()
-            self.trainer.step()
-        self.trainer.zero_grad()
+        # if len(shuffledData) - 1 == iSentence:
+        #     print('hidLayerFOM values on last iteration within an epoch')
+        #     print(self.model.hidLayerFOM)
         print("Loss: ", mloss / iSentence)
 
     def print_model_parameters(self):
