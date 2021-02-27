@@ -1,7 +1,10 @@
+import multiprocessing
 import os.path
 import pickle
 import time
 from optparse import OptionParser
+
+import torch
 
 import mstlstm
 import utils
@@ -89,10 +92,10 @@ if __name__ == '__main__':
 
     (options, args) = parser.parse_args()
     # TODO: Uncomment multiprocess when not debugging
-    # max_thread = multiprocessing.cpu_count()
-    # active_thread = options.numthread if max_thread > options.numthread else max_thread
-    # torch.set_num_threads(active_thread)
-    # print(active_thread, "threads are in use")
+    max_thread = multiprocessing.cpu_count()
+    active_thread = options.numthread if max_thread > options.numthread else max_thread
+    torch.set_num_threads(active_thread)
+    print(active_thread, "threads are in use")
 
     # Added to run from IntelliJ
     os.chdir("../../")
@@ -155,7 +158,7 @@ if __name__ == '__main__':
         for epoch in range(options.epochs):
             print('Starting epoch', epoch)
             parser.train(train_file)
-            parser.save(os.path.join(output_file, os.path.basename(model_path) + str(epoch + 1)))
+            # parser.save(os.path.join(output_file, os.path.basename(model_path) + str(epoch + 1)))
             # evaluate_model()
 
 

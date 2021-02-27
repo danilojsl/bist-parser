@@ -10,7 +10,6 @@ from tensorflow.keras.layers import Embedding
 from tensorflow.keras.layers import Input
 from tensorflow.keras.layers import LSTM
 from tensorflow.keras.models import Model
-from tensorflow.keras.models import Sequential
 
 import decoder
 import utils
@@ -35,7 +34,7 @@ def concatenate_layers(array1, array2, num_vec):
 def Parameter(shape=None, name='param'):
     shape = (1, shape) if type(shape) == int else shape
     random_tensor = tf.get_variable('random_tensor', shape=shape, initializer=tf.contrib.layers.xavier_initializer())
-    return tf.Variable(random_tensor, name=name)
+    return tf.Variable(random_tensor, name=name, trainable=True)
 
 
 class MSTParserLSTMModel(tf.keras.Model):
@@ -77,19 +76,25 @@ class MSTParserLSTMModel(tf.keras.Model):
 
         self.edim = 0
 
-        self.wlookup = Sequential(Embedding(len(vocab) + 3, self.wdims))
-        self.plookup = Sequential(Embedding(len(pos) + 3, self.pdims))
-        self.rlookup = Sequential(Embedding(len(rels) + 3, self.rdims))
-        self.olookup = Sequential(Embedding(len(onto) + 3, self.odims))
-        self.clookup = Sequential(Embedding(len(cpos) + 3, self.cdims))
+        self.wlookup = Embedding(len(vocab) + 3, self.wdims, name='embedding_vocab',
+                                 embeddings_initializer=tf.keras.initializers.normal(mean=0.0, stddev=1.0))
+        self.plookup = Embedding(len(pos) + 3, self.pdims, name='embedding_pos')
+        self.rlookup = Embedding(len(rels), self.rdims, name='embedding_rels')
+        self.olookup = Embedding(len(onto) + 3, self.odims, name='embedding_onto')
+        self.clookup = Embedding(len(cpos) + 3, self.cdims, name='embedding_cpos')
 
         # LSTM Network architecture
         # First LSTM Layer
-        self.lstm_for_1 = LSTM(self.ldims, return_sequences=True, return_state=True)
-        self.lstm_back_1 = LSTM(self.ldims, return_sequences=True, return_state=True)
+        number_features = self.wdims + self.pdims + self.edim + self.odims + self.cdims
+        self.lstm_for_1 = LSTM(batch_size=number_features, units=self.ldims, stateful=True,
+                               return_sequences=True, return_state=True)
+        self.lstm_back_1 = LSTM(batch_size=number_features, units=self.ldims, stateful=True,
+                                return_sequences=True, return_state=True)
         # Second LSTM Layer
-        self.lstm_for_2 = LSTM(self.ldims, return_sequences=True, return_state=True)
-        self.lstm_back_2 = LSTM(self.ldims, return_sequences=True, return_state=True)
+        self.lstm_for_2 = LSTM(batch_size=self.ldims * 2, units=self.ldims, stateful=True,
+                               return_sequences=True, return_state=True)
+        self.lstm_back_2 = LSTM(batch_size=self.ldims * 2, units=self.ldims, stateful=True,
+                                return_sequences=True, return_state=True)
         # Initializing hidden and cell states values to 0
         self.hid_for_1, self.hid_back_1, self.hid_for_2, self.hid_back_2 = [
             self.init_hidden(self.ldims) for _ in range(4)]
@@ -182,7 +187,9 @@ class MSTParserLSTMModel(tf.keras.Model):
             c = float(self.wordsCount.get(entry.norm, 0))
             dropFlag = (random.random() < (c / (0.25 + c)))
             w_index = np.array(self.vocab.get(entry.norm, 0)).reshape(1) if dropFlag else np.array(0).reshape(1)
-            wordvec = self.wlookup.predict(w_index) if self.wdims > 0 else None
+            wordvec = self.wlookup(w_index) if self.wdims > 0 else None
+            # wordvec = self.wlookup.predict(w_index) if self.wdims > 0 else None
+            # wordvec = tf.nn.embedding_lookup(self.wlookup, w_index) if self.wdims > 0 else None
             o_index = np.array(self.onto[entry.onto] if random.random() < 0.9 else np.array(0).reshape(1))
             ontovec = self.olookup(o_index) if self.odims > 0 else None
             cpos_index = np.array(self.cpos[entry.cpos] if random.random() < 0.9 else np.array(0).reshape(1))
@@ -273,7 +280,7 @@ def get_optim(opt):
     if opt.optim == 'sgd':
         return tf.keras.optimizers.SGD(learning_rate=opt.lr)
     elif opt.optim == 'adam':
-        return tf.keras.optimizers.Adam(learning_rate=opt.lr)
+        return tf.keras.optimizers.Adam(learning_rate=opt.lr, epsilon=1e-8)
 
 
 class MSTParserLSTM:
@@ -281,6 +288,7 @@ class MSTParserLSTM:
     def __init__(self, vocab, pos, rels, enum_word, options, onto, cpos):
         self.model = MSTParserLSTMModel(vocab, pos, rels, enum_word, options, onto, cpos)
         self.trainer = get_optim(options)
+        self.last_embeddings = None
 
     def train(self, conll_path):
         print('tensorflow version: ', tf.version.VERSION)
@@ -291,6 +299,7 @@ class MSTParserLSTM:
         etotal = 0
         iSentence = 0
         start = time.time()
+
         with open(conll_path, 'r') as conllFP:
             shuffledData = list(read_conll(conllFP))
             random.shuffle(shuffledData)
@@ -300,12 +309,20 @@ class MSTParserLSTM:
                 # print("Initializing hidden and cell states values to 0")
                 self.model.hid_for_1, self.model.hid_back_1, self.model.hid_for_2, self.model.hid_back_2 = [
                     self.model.init_hidden(self.model.ldims) for _ in range(4)]
-                # if iSentence == 0:
-                #     print('hidLayerFOM values on first iteration within an epoch')
-                #     print(self.model.hidLayerFOM)
+
+                if iSentence == 0:
+                    self.model.wlookup.build(())
+                    if self.last_embeddings is not None:
+                        print('Updating embeddings')
+                        self.model.wlookup.embeddings = self.last_embeddings
+                    print('wlookup weight values on first iteration within an epoch')
+                    print(self.model.wlookup.embeddings)
                 if iSentence % 100 == 0 and iSentence != 0:
                     print('Processing sentence number:', iSentence,
+                          'eloss:', eloss,
+                          'etotal:', etotal,
                           'Loss:', eloss / etotal,
+                          'eerrors:', float(eerrors),
                           'Errors:', (float(eerrors)) / etotal,
                           'Time', time.time() - start)
                     start = time.time()
@@ -317,8 +334,9 @@ class MSTParserLSTM:
 
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
 
-                with tf.GradientTape(persistent=True, watch_accessed_variables=False) as tape:
-                    tape.watch(self.model.sources)
+                with tf.GradientTape(persistent=False, watch_accessed_variables=True) as tape:
+                    # tape.watch(self.model.wlookup)
+                    # tape.watch(self.model.trainable_variables)
                     e_output = self.model.forward(conll_sentence, errs, lerrs)
                     # here the errs and lerrs are output variables with tensor values after the forward
                     eerrors += e_output
@@ -334,18 +352,23 @@ class MSTParserLSTM:
 
                 if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
                     if len(errs) > 0 or len(lerrs) > 0:
-                        grads = tape.gradient(eerrs_sum, self.model.sources)
+                        grads = tape.gradient(eerrs_sum, self.model.trainable_variables)
                         # print("Before apply gradients")
                         # print(self.model.sources)
-                        self.trainer.apply_gradients(zip(grads, self.model.sources))
-                        # print("After apply gradients")
+                        self.trainer.apply_gradients(zip(grads, self.model.trainable_variables))
+                        # print("After apply gradients")sources
                         # print(self.model.sources)
                         errs = []
                         lerrs = []
-        # # if len(shuffledData) - 1 == iSentence:
-        #     print('hidLayerFOM values on last iteration within an epoch')
-        #     print(self.model.hidLayerFOM)
-        print("Loss: ", mloss / iSentence)
+
+                self.last_embeddings = self.model.wlookup.embeddings
+
+        if len(shuffledData) - 1 == iSentence:
+            print('wlookup weight values on last iteration within an epoch')
+            self.model.wlookup.build(())
+            self.last_embeddings = self.model.wlookup.embeddings
+            print(self.last_embeddings)
+        print("[Stateful] Loss: ", mloss / iSentence)
 
     def save(self, fn):
         tmp = fn + '.tmp'
