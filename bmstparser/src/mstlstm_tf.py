@@ -142,7 +142,6 @@ class MSTParserLSTMModel(tf.keras.Model):
     def forward(self, sentence, errs, lerrs):
 
         self.process_sentence_embeddings(sentence)
-        # TODO: Define LSTM architecture on each iteration based on sentence length (time steps)
         num_vec = len(sentence)  # time steps
 
         features_for = [entry.vec for entry in sentence]
@@ -188,8 +187,6 @@ class MSTParserLSTMModel(tf.keras.Model):
             dropFlag = (random.random() < (c / (0.25 + c)))
             w_index = np.array(self.vocab.get(entry.norm, 0)).reshape(1) if dropFlag else np.array(0).reshape(1)
             wordvec = self.wlookup(w_index) if self.wdims > 0 else None
-            # wordvec = self.wlookup.predict(w_index) if self.wdims > 0 else None
-            # wordvec = tf.nn.embedding_lookup(self.wlookup, w_index) if self.wdims > 0 else None
             o_index = np.array(self.onto[entry.onto] if random.random() < 0.9 else np.array(0).reshape(1))
             ontovec = self.olookup(o_index) if self.odims > 0 else None
             cpos_index = np.array(self.cpos[entry.cpos] if random.random() < 0.9 else np.array(0).reshape(1))
@@ -306,7 +303,7 @@ class MSTParserLSTM:
             errs = []
             lerrs = []
             for iSentence, sentence in enumerate(shuffledData):
-                # print("Initializing hidden and cell states values to 0")
+                # Initializing hidden and cell states to tensors of 0 values
                 self.model.hid_for_1, self.model.hid_back_1, self.model.hid_for_2, self.model.hid_back_2 = [
                     self.model.init_hidden(self.model.ldims) for _ in range(4)]
 
@@ -335,8 +332,7 @@ class MSTParserLSTM:
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
 
                 with tf.GradientTape(persistent=False, watch_accessed_variables=True) as tape:
-                    # tape.watch(self.model.wlookup)
-                    # tape.watch(self.model.trainable_variables)
+                    tape.watch(self.model.trainable_variables)
                     e_output = self.model.forward(conll_sentence, errs, lerrs)
                     # here the errs and lerrs are output variables with tensor values after the forward
                     eerrors += e_output
