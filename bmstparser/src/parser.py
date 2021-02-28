@@ -51,7 +51,7 @@ if __name__ == '__main__':
     if training_phase:
         parser.add_option("--predict", action="store_true", dest="predictFlag", default=False)
         parser.add_option("--train", dest="conll_train", help="Annotated CONLL train file", metavar="FILE",
-                          default="/corpus/en-mid-ud-train.conllu")
+                          default="/corpus/en-small-ud-train.conllu")
         parser.add_option("--dev", dest="conll_dev", help="Annotated CONLL dev file", metavar="FILE",
                           default="/corpus/en-mid-ud-dev.conllu")
 
@@ -91,7 +91,7 @@ if __name__ == '__main__':
                           default="/model/neuralfirstorder.model3")
 
     (options, args) = parser.parse_args()
-    # TODO: Uncomment multiprocess when not debugging
+    # Comment multiprocess when debugging
     max_thread = multiprocessing.cpu_count()
     active_thread = options.numthread if max_thread > options.numthread else max_thread
     torch.set_num_threads(active_thread)
@@ -141,6 +141,7 @@ if __name__ == '__main__':
                         print('LAS:%s' % l.strip().split()[-1])
     else:
         # Training classifier
+        print(f'Training with file {options.conll_train}')
         # Added to run from IntelliJ
         train_file = os.getcwd() + options.conll_train
         dev_file = os.getcwd() + options.conll_dev

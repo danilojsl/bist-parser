@@ -285,7 +285,6 @@ class MSTParserLSTM:
     def __init__(self, vocab, pos, rels, enum_word, options, onto, cpos):
         self.model = MSTParserLSTMModel(vocab, pos, rels, enum_word, options, onto, cpos)
         self.trainer = get_optim(options)
-        self.last_embeddings = None
 
     def train(self, conll_path):
         print('tensorflow version: ', tf.version.VERSION)
@@ -307,13 +306,6 @@ class MSTParserLSTM:
                 self.model.hid_for_1, self.model.hid_back_1, self.model.hid_for_2, self.model.hid_back_2 = [
                     self.model.init_hidden(self.model.ldims) for _ in range(4)]
 
-                if iSentence == 0:
-                    self.model.wlookup.build(())
-                    if self.last_embeddings is not None:
-                        print('Updating embeddings')
-                        self.model.wlookup.embeddings = self.last_embeddings
-                    print('wlookup weight values on first iteration within an epoch')
-                    print(self.model.wlookup.embeddings)
                 if iSentence % 100 == 0 and iSentence != 0:
                     print('Processing sentence number:', iSentence,
                           'eloss:', eloss,
@@ -357,14 +349,7 @@ class MSTParserLSTM:
                         errs = []
                         lerrs = []
 
-                self.last_embeddings = self.model.wlookup.embeddings
-
-        if len(shuffledData) - 1 == iSentence:
-            print('wlookup weight values on last iteration within an epoch')
-            self.model.wlookup.build(())
-            self.last_embeddings = self.model.wlookup.embeddings
-            print(self.last_embeddings)
-        print("[Stateful] Loss: ", mloss / iSentence)
+        print("Loss: ", mloss / iSentence)
 
     def save(self, fn):
         tmp = fn + '.tmp'
