@@ -70,7 +70,7 @@ if __name__ == '__main__':
         parser.add_option("--hidden", type="int", dest="hidden_units", default=100)
         parser.add_option("--hidden2", type="int", dest="hidden2_units", default=0)
         parser.add_option("--optim", type="string", dest="optim", default='adam')
-        parser.add_option("--lr", type="float", dest="lr", default=0.1)
+        parser.add_option("--lr", type="float", dest="lr", default=1e-3)
         parser.add_option("--activation", type="string", dest="activation", default="tanh")
         parser.add_option("--lstmlayers", type="int", dest="lstm_layers", default=2)
         parser.add_option("--lstmdims", type="int", dest="lstm_dims", default=125)

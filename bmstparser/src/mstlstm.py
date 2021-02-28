@@ -307,9 +307,9 @@ class MSTParserLSTMModel(nn.Module):
 
 def get_optim(opt, parameters):
     if opt.optim == 'sgd':
-        return optim.SGD(parameters, lr=opt.learning_rate)
+        return optim.SGD(parameters, lr=opt.lr)
     elif opt.optim == 'adam':
-        return optim.Adam(parameters)
+        return optim.Adam(parameters, lr=opt.lr)
 
 
 class MSTParserLSTM:
