@@ -41,6 +41,91 @@ def loss_function(y_true, y_pred):
     return tf.reduce_sum(concatenate_arrays(l_variable, 'tensor'))
 
 
+class EmbeddingModule(tf.keras.layers.Layer):
+
+    def __init__(self, vocab):
+        super(EmbeddingModule, self).__init__()
+        self.wlookup = Embedding(len(vocab) + 3, self.wdims, name='embedding_vocab',
+                                 embeddings_initializer=tf.keras.initializers.random_normal(mean=0.0, stddev=1.0))
+
+    def call(self, inputs):
+        # Forward pass
+        word_vec = self.wlookup(inputs) if self.wdims > 0 else None
+        return word_vec
+
+
+class LSTMModule(tf.keras.layers.Layer):
+
+    def __init__(self, hidden_units, hidden2_units):
+        super(LSTMModule, self).__init__()
+        # LSTM Network architecture
+        # First LSTM Layer
+        self.lstm_for_1 = LSTM(self.ldims, return_sequences=True, return_state=True)
+        self.lstm_back_1 = LSTM(self.ldims, return_sequences=True, return_state=True)
+        # Second LSTM Layer
+        self.lstm_for_2 = LSTM(self.ldims, return_sequences=True, return_state=True)
+        self.lstm_back_2 = LSTM(self.ldims, return_sequences=True, return_state=True)
+        # Initializing hidden and cell states values to 0
+        self.hid_for_1, self.hid_back_1, self.hid_for_2, self.hid_back_2 = [
+            self.init_hidden(self.ldims) for _ in range(4)]
+
+        # Weight Initialization
+        self.hidden_units = hidden_units
+        self.hidden2_units = hidden2_units
+        self.hidLayerFOH = Parameter((self.ldims * 2, self.hidden_units), 'hidLayerFOH')
+        self.hidLayerFOM = Parameter((self.ldims * 2, self.hidden_units), 'hidLayerFOM')
+        self.hidBias = Parameter(self.hidden_units, 'hidBias')
+        self.catBias = Parameter(self.hidden_units * 2, 'catBias')
+        self.rhidLayerFOH = Parameter((2 * self.ldims, self.hidden_units), 'rhidLayerFOH')
+        self.rhidLayerFOM = Parameter((2 * self.ldims, self.hidden_units), 'rhidLayerFOM')
+        self.rhidBias = Parameter(self.hidden_units, 'rhidBias')
+        self.rcatBias = Parameter(self.hidden_units * 2, 'rcatBias')
+
+        if self.hidden2_units:
+            self.hid2Layer = Parameter((self.hidden_units * 2, self.hidden2_units), 'hid2Layer')
+            self.sources.append(self.hid2Layer)
+            self.hid2Bias = Parameter(self.hidden2_units, 'hid2Bias')
+            self.sources.append(self.hid2Bias)
+            self.rhid2Layer = Parameter((self.hidden_units * 2, self.hidden2_units), 'rhid2Layer')
+            self.sources.append(self.rhid2Layer)
+            self.rhid2Bias = Parameter(self.hidden2_units, 'rhid2Bias')
+            self.sources.append(self.rhid2Bias)
+
+        self.outLayer = Parameter(
+            (self.hidden2_units if self.hidden2_units > 0 else self.hidden_units, 1), 'outLayer')
+        self.outBias = 0  # Parameter(1)
+        self.routLayer = Parameter(
+            (self.hidden2_units if self.hidden2_units > 0 else self.hidden_units, len(self.rel_list)), 'routLayer')
+        self.routBias = Parameter((len(self.rel_list)), 'routBias')
+
+    def call(self, inputs):
+        sentence = inputs   # unpack somehow sentence from input
+        num_vec = len(sentence)  # time steps
+
+        features_for = [entry.vec for entry in sentence]
+        features_back = [entry.vec for entry in reversed(sentence)]
+        vec_for = np.concatenate(features_for).reshape(self.sample_size, num_vec, -1)
+        vec_back = np.concatenate(features_back).reshape(self.sample_size, num_vec, -1)
+
+        res_for_1, self.hid_for_1 = self.get_lstm_output(self.lstm_for_1, vec_for, self.hid_for_1)
+        res_back_1, self.hid_back_1 = self.get_lstm_output(self.lstm_back_1, vec_back, self.hid_back_1)
+
+        vec_cat = concatenate_layers(res_for_1[0], res_back_1[0], num_vec)
+        vec_for_2 = np.concatenate(vec_cat).reshape(self.sample_size, num_vec, -1)
+        vec_back_2 = np.concatenate(list(reversed(vec_cat))).reshape(self.sample_size, num_vec, -1)
+
+        res_for_2, self.hid_for_2 = self.get_lstm_output(self.lstm_for_2, vec_for_2, self.hid_for_2)
+        res_back_2, self.hid_back_2 = self.get_lstm_output(self.lstm_back_2, vec_back_2, self.hid_back_2)
+
+
+
+    @staticmethod
+    def get_lstm_output(lstm_model, input_sequence, initial_state):
+        output = lstm_model(input_sequence, initial_state=initial_state)
+        hidden_states, hidden_state, cell_state = output[0], output[1], output[2]
+        return hidden_states, (hidden_state, cell_state)
+
+
 class MSTParserLSTMModel(tf.keras.Model):
 
     def __init__(self, vocab, pos, rels, enum_word, options, onto, cpos):
