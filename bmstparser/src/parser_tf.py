@@ -78,7 +78,7 @@ if __name__ == '__main__':
     # TODO: Check if pickle serialization is required
     print('Finished collecting vocabulary')
 
-    print('Initializing mst-parser:')
+    print('Initializing mst-parser with Stateless LSTM:')
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
     tf.compat.v1.enable_eager_execution()
     parser = mstlstm_tf.MSTParserLSTM(words, pos, rels, enum_word, options, onto, cpos)

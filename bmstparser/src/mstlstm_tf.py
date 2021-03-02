@@ -7,9 +7,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow.keras.activations as F
 from tensorflow.keras.layers import Embedding
-from tensorflow.keras.layers import Input
 from tensorflow.keras.layers import LSTM
-from tensorflow.keras.models import Model
 
 import decoder
 import utils
@@ -33,8 +31,14 @@ def concatenate_layers(array1, array2, num_vec):
 
 def Parameter(shape=None, name='param'):
     shape = (1, shape) if type(shape) == int else shape
-    random_tensor = tf.get_variable('random_tensor', shape=shape, initializer=tf.contrib.layers.xavier_initializer())
-    return tf.Variable(random_tensor, name=name, trainable=True)
+    initializer = tf.keras.initializers.GlorotUniform()  # Xavier uniform
+    values = initializer(shape=shape)
+    return tf.Variable(values, name=name, trainable=True)
+
+
+def loss_function(y_true, y_pred):
+    l_variable = y_true + y_pred
+    return tf.reduce_sum(concatenate_arrays(l_variable, 'tensor'))
 
 
 class MSTParserLSTMModel(tf.keras.Model):
@@ -77,11 +81,11 @@ class MSTParserLSTMModel(tf.keras.Model):
         self.edim = 0
 
         self.wlookup = Embedding(len(vocab) + 3, self.wdims, name='embedding_vocab',
-                                 embeddings_initializer=tf.keras.initializers.normal(mean=0.0, stddev=1.0))
-        self.plookup = Embedding(len(pos) + 3, self.pdims, name='embedding_pos')
-        self.rlookup = Embedding(len(rels), self.rdims, name='embedding_rels')
-        self.olookup = Embedding(len(onto) + 3, self.odims, name='embedding_onto')
-        self.clookup = Embedding(len(cpos) + 3, self.cdims, name='embedding_cpos')
+                                 embeddings_initializer=tf.keras.initializers.random_normal(mean=0.0, stddev=1.0))
+        self.plookup = Embedding(len(pos) + 3, self.pdims, name='embedding_pos') if self.pdims > 0 else None
+        self.rlookup = Embedding(len(rels), self.rdims, name='embedding_rels') if self.rdims > 0 else None
+        self.olookup = Embedding(len(onto) + 3, self.odims, name='embedding_onto') if self.odims > 0 else None
+        self.clookup = Embedding(len(cpos) + 3, self.cdims, name='embedding_cpos') if self.cdims > 0 else None
 
         # LSTM Network architecture
         # First LSTM Layer
@@ -134,10 +138,13 @@ class MSTParserLSTMModel(tf.keras.Model):
     def init_hidden(self, dim):
         return tf.zeros(shape=[1, dim]), tf.zeros(shape=[1, dim])
 
-    def forward(self, sentence, errs, lerrs):
+    # def call(self, inputs):
+    #     print("")
+    #     return self.lstm_for_2(inputs)
 
+    def call(self, sentence, errs, lerrs):
+        # forward pass
         self.process_sentence_embeddings(sentence)
-        # TODO: Define LSTM architecture on each iteration based on sentence length (time steps)
         num_vec = len(sentence)  # time steps
 
         features_for = [entry.vec for entry in sentence]
@@ -198,14 +205,6 @@ class MSTParserLSTMModel(tf.keras.Model):
 
             entry.rheadfov = None
             entry.rmodfov = None
-
-    @staticmethod
-    def prepare_lstm_model(time_steps, number_features, hidden_state_size):
-        inputs = Input(shape=(time_steps, number_features))
-        hidden_states, hidden_state, cell_state = \
-            LSTM(hidden_state_size, return_sequences=True, return_state=True)(inputs)
-        lstm_model = Model(inputs=inputs, outputs=[hidden_states, hidden_state, cell_state])
-        return lstm_model
 
     @staticmethod
     def get_lstm_output(lstm_model, input_sequence, initial_state):
@@ -321,8 +320,9 @@ class MSTParserLSTM:
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
 
                 with tf.GradientTape(persistent=False, watch_accessed_variables=True) as tape:
-                    tape.watch(self.model.trainable_variables)
-                    e_output = self.model.forward(conll_sentence, errs, lerrs)
+                    # tape.watch(self.model.trainable_variables)
+                    # e_output = self.model.forward(conll_sentence, errs, lerrs)
+                    e_output = self.model(conll_sentence, errs, lerrs)
                     # here the errs and lerrs are output variables with tensor values after the forward
                     eerrors += e_output
                     eloss += e_output
@@ -332,8 +332,9 @@ class MSTParserLSTM:
                     if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
                         if len(errs) > 0 or len(lerrs) > 0:
                             reshaped_lerrs = [tf.reshape(item, [1]) for item in lerrs]
-                            l_variable = errs + reshaped_lerrs
-                            eerrs_sum = tf.reduce_sum(concatenate_arrays(l_variable, 'tensor'))
+                            # l_variable = errs + reshaped_lerrs
+                            # eerrs_sum = tf.reduce_sum(concatenate_arrays(l_variable, 'tensor'))
+                            eerrs_sum = loss_function(errs, reshaped_lerrs)
 
                 if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
                     if len(errs) > 0 or len(lerrs) > 0:
