@@ -68,6 +68,7 @@ if __name__ == '__main__':
     # Added to run from IntelliJ
 
     # Training classifier
+    print(f'Training with file {options.conll_train}')
     # Added to run from IntelliJ
     train_file = os.getcwd() + options.conll_train
     dev_file = os.getcwd() + options.conll_dev
