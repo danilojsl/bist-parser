@@ -102,31 +102,19 @@ class MSTParserLSTMModel(tf.keras.Model):
         self.hidden_units = options.hidden_units
         self.hidden2_units = options.hidden2_units
         self.hidLayerFOH = Parameter((self.ldims * 2, self.hidden_units), 'hidLayerFOH')
-        self.sources = [self.hidLayerFOH]
         self.hidLayerFOM = Parameter((self.ldims * 2, self.hidden_units), 'hidLayerFOM')
-        self.sources.append(self.hidLayerFOM)
         self.hidBias = Parameter(self.hidden_units, 'hidBias')
-        self.sources.append(self.hidBias)
         self.catBias = Parameter(self.hidden_units * 2, 'catBias')
-        self.sources.append(self.catBias)
         self.rhidLayerFOH = Parameter((2 * self.ldims, self.hidden_units), 'rhidLayerFOH')
-        self.sources.append(self.rhidLayerFOH)
         self.rhidLayerFOM = Parameter((2 * self.ldims, self.hidden_units), 'rhidLayerFOM')
-        self.sources.append(self.rhidLayerFOM)
         self.rhidBias = Parameter(self.hidden_units, 'rhidBias')
-        self.sources.append(self.rhidBias)
         self.rcatBias = Parameter(self.hidden_units * 2, 'rcatBias')
-        self.sources.append(self.rcatBias)
 
         if self.hidden2_units:
             self.hid2Layer = Parameter((self.hidden_units * 2, self.hidden2_units), 'hid2Layer')
-            self.sources.append(self.hid2Layer)
             self.hid2Bias = Parameter(self.hidden2_units, 'hid2Bias')
-            self.sources.append(self.hid2Bias)
             self.rhid2Layer = Parameter((self.hidden_units * 2, self.hidden2_units), 'rhid2Layer')
-            self.sources.append(self.rhid2Layer)
             self.rhid2Bias = Parameter(self.hidden2_units, 'rhid2Bias')
-            self.sources.append(self.rhid2Bias)
 
         self.outLayer = Parameter(
             (self.hidden2_units if self.hidden2_units > 0 else self.hidden_units, 1), 'outLayer')
@@ -300,8 +288,7 @@ class MSTParserLSTM:
                 self.model.hid_for_1, self.model.hid_back_1, self.model.hid_for_2, self.model.hid_back_2 = [
                     self.model.init_hidden(self.model.ldims) for _ in range(4)]
                 # if iSentence == 0:
-                #     print('hidLayerFOM values on first iteration within an epoch')
-                #     print(self.model.hidLayerFOM)
+                #     print(self.model.trainable_variables[0:3])
                 if iSentence % 100 == 0 and iSentence != 0:
                     print('Processing sentence number:', iSentence,
                           'eloss:', eloss,
@@ -314,8 +301,7 @@ class MSTParserLSTM:
                     eerrors = 0
                     eloss = 0.0
                     etotal = 0
-                    # print('hidLayerFOM values:')
-                    # print(self.model.hidLayerFOM)
+                    # print(self.model.trainable_variables[0:3])
 
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
 
@@ -335,16 +321,10 @@ class MSTParserLSTM:
                 if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
                     if len(errs) > 0 or len(lerrs) > 0:
                         grads = tape.gradient(eerrs_sum, self.model.trainable_variables)
-                        # print("Before apply gradients")
-                        # print(self.model.sources)
                         self.trainer.apply_gradients(zip(grads, self.model.trainable_variables))
-                        # print("After apply gradients")sources
-                        # print(self.model.sources)
                         errs = []
                         lerrs = []
-        # # if len(shuffledData) - 1 == iSentence:
-        #     print('hidLayerFOM values on last iteration within an epoch')
-        #     print(self.model.hidLayerFOM)
+
         print("Loss: ", mloss / iSentence)
 
     def save(self, fn):

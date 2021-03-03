@@ -355,7 +355,9 @@ class MSTParserLSTM:
                 # print("Initializing hidden and cell states values to 0")
                 self.model.hid_for_1, self.model.hid_back_1, self.model.hid_for_2, self.model.hid_back_2 = [
                     self.model.init_hidden(self.model.ldims) for _ in range(4)]
-                if iSentence % 100 == 0 and iSentence != 0:
+                if iSentence == 0:
+                    print(self.print_model_parameters())
+                if iSentence % 233 == 0 and iSentence != 0:
                     print('Processing sentence number:', iSentence,
                           'eloss:', eloss,
                           'etotal:', etotal,
@@ -367,6 +369,7 @@ class MSTParserLSTM:
                     eerrors = 0
                     eloss = 0.0
                     etotal = 0
+                    print(self.print_model_parameters())
 
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
 
@@ -394,4 +397,5 @@ class MSTParserLSTM:
     def print_model_parameters(self):
         for name, param in self.model.named_parameters():
             if param.requires_grad:
-                print(name, param.data)
+                if name.startswith('wlookup') or name.startswith('lstm_for_1'):
+                    print(name, param.data)
