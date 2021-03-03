@@ -83,13 +83,9 @@ class LSTMModule(tf.keras.layers.Layer):
 
         if self.hidden2_units:
             self.hid2Layer = Parameter((self.hidden_units * 2, self.hidden2_units), 'hid2Layer')
-            self.sources.append(self.hid2Layer)
             self.hid2Bias = Parameter(self.hidden2_units, 'hid2Bias')
-            self.sources.append(self.hid2Bias)
             self.rhid2Layer = Parameter((self.hidden_units * 2, self.hidden2_units), 'rhid2Layer')
-            self.sources.append(self.rhid2Layer)
             self.rhid2Bias = Parameter(self.hidden2_units, 'rhid2Bias')
-            self.sources.append(self.rhid2Bias)
 
         self.outLayer = Parameter(
             (self.hidden2_units if self.hidden2_units > 0 else self.hidden_units, 1), 'outLayer')
@@ -116,8 +112,6 @@ class LSTMModule(tf.keras.layers.Layer):
 
         res_for_2, self.hid_for_2 = self.get_lstm_output(self.lstm_for_2, vec_for_2, self.hid_for_2)
         res_back_2, self.hid_back_2 = self.get_lstm_output(self.lstm_back_2, vec_back_2, self.hid_back_2)
-
-
 
     @staticmethod
     def get_lstm_output(lstm_model, input_sequence, initial_state):
