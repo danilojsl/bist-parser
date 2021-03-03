@@ -320,8 +320,6 @@ class MSTParserLSTM:
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
 
                 with tf.GradientTape(persistent=False, watch_accessed_variables=True) as tape:
-                    # tape.watch(self.model.trainable_variables)
-                    # e_output = self.model.forward(conll_sentence, errs, lerrs)
                     e_output = self.model(conll_sentence, errs, lerrs)
                     # here the errs and lerrs are output variables with tensor values after the forward
                     eerrors += e_output
@@ -332,8 +330,6 @@ class MSTParserLSTM:
                     if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
                         if len(errs) > 0 or len(lerrs) > 0:
                             reshaped_lerrs = [tf.reshape(item, [1]) for item in lerrs]
-                            # l_variable = errs + reshaped_lerrs
-                            # eerrs_sum = tf.reduce_sum(concatenate_arrays(l_variable, 'tensor'))
                             eerrs_sum = loss_function(errs, reshaped_lerrs)
 
                 if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
