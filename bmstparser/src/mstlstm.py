@@ -357,7 +357,7 @@ class MSTParserLSTM:
                     self.model.init_hidden(self.model.ldims) for _ in range(4)]
                 if iSentence == 0:
                     print(self.print_model_parameters())
-                if iSentence % 233 == 0 and iSentence != 0:
+                if iSentence % 100 == 0 and iSentence != 0:
                     print('Processing sentence number:', iSentence,
                           'eloss:', eloss,
                           'etotal:', etotal,
