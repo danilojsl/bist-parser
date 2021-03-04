@@ -43,22 +43,48 @@ def loss_function(y_true, y_pred):
 
 class EmbeddingModule(tf.keras.layers.Layer):
 
-    def __init__(self, vocab):
+    def __init__(self, vocab, enum_word, wdims):
         super(EmbeddingModule, self).__init__()
+        self.wdims = wdims
+        self.wordsCount = vocab
+        self.vocab = {word: ind + 3 for word, ind in enum_word.items()}
+        self.vocab['*PAD*'] = 1
+
         self.wlookup = Embedding(len(vocab) + 3, self.wdims, name='embedding_vocab',
                                  embeddings_initializer=tf.keras.initializers.random_normal(mean=0.0, stddev=1.0))
 
-    def call(self, inputs):
+    def call(self, sentence):
         # Forward pass
-        word_vec = self.wlookup(inputs) if self.wdims > 0 else None
-        return word_vec
+        sentence_vec = []
+        for entry in sentence:
+            c = float(self.wordsCount.get(entry.norm, 0))
+            dropFlag = (random.random() < (c / (0.25 + c)))
+            w_index = np.array(self.vocab.get(entry.norm, 0)).reshape(1) if dropFlag else np.array(0).reshape(1)
+            wordvec = self.wlookup(w_index) if self.wdims > 0 else None
+            evec = None
+            # The dot notation create attributes for the class ConllEntry in run time
+            # TODO: entry.vec returns a 3D numpy array check if it requires a 2D one
+            entry.vec = concatenate_arrays([wordvec, None, None, None, evec], 'tensor')
+            sentence_vec.append(entry.vec)
+            entry.lstms = [entry.vec, entry.vec]
+            entry.headfov = None
+            entry.modfov = None
+
+            entry.rheadfov = None
+            entry.rmodfov = None
+
+        return sentence_vec
 
 
 class LSTMModule(tf.keras.layers.Layer):
 
-    def __init__(self, hidden_units, hidden2_units):
+    def __init__(self, lstm_dims, hidden_units, hidden2_units):
         super(LSTMModule, self).__init__()
+        # Input data
+        self.sample_size = 1  # batch size
+
         # LSTM Network architecture
+        self.ldims = lstm_dims
         # First LSTM Layer
         self.lstm_for_1 = LSTM(self.ldims, return_sequences=True, return_state=True)
         self.lstm_back_1 = LSTM(self.ldims, return_sequences=True, return_state=True)
@@ -94,8 +120,7 @@ class LSTMModule(tf.keras.layers.Layer):
             (self.hidden2_units if self.hidden2_units > 0 else self.hidden_units, len(self.rel_list)), 'routLayer')
         self.routBias = Parameter((len(self.rel_list)), 'routBias')
 
-    def call(self, inputs):
-        sentence = inputs   # unpack somehow sentence from input
+    def call(self, sentence):
         num_vec = len(sentence)  # time steps
 
         features_for = [entry.vec for entry in sentence]
@@ -112,6 +137,11 @@ class LSTMModule(tf.keras.layers.Layer):
 
         res_for_2, self.hid_for_2 = self.get_lstm_output(self.lstm_for_2, vec_for_2, self.hid_for_2)
         res_back_2, self.hid_back_2 = self.get_lstm_output(self.lstm_back_2, vec_back_2, self.hid_back_2)
+
+        return res_for_2, res_back_2
+
+    def init_hidden(self, dim):
+        return tf.zeros(shape=[1, dim]), tf.zeros(shape=[1, dim])
 
     @staticmethod
     def get_lstm_output(lstm_model, input_sequence, initial_state):
@@ -135,36 +165,9 @@ class MSTParserLSTMModel(tf.keras.Model):
 
         # Embeddings layers
         self.ldims = options.lstm_dims
-        self.wdims = options.wembedding_dims
-        self.pdims = options.pembedding_dims
-        self.rdims = options.rembedding_dims
-        self.odims = options.oembedding_dims
-        self.cdims = options.cembedding_dims
-        self.wordsCount = vocab
-        self.vocab = {word: ind + 3 for word, ind in enum_word.items()}
-        self.pos = {word: ind + 3 for ind, word in enumerate(pos)}
-        self.onto = {word: ind + 3 for ind, word in enumerate(onto)}
-        self.cpos = {word: ind + 3 for ind, word in enumerate(cpos)}
+        self.embeddings = EmbeddingModule(vocab, enum_word, options.wembedding_dims)
         self.rels = {word: ind for ind, word in enumerate(rels)}
         self.rel_list = rels
-
-        self.vocab['*PAD*'] = 1
-        self.pos['*PAD*'] = 1
-        self.onto['*PAD*'] = 1
-        self.cpos['*PAD*'] = 1
-        self.vocab['*INITIAL*'] = 2
-        self.pos['*INITIAL*'] = 2
-        self.onto['*INITIAL*'] = 2
-        self.cpos['*INITIAL*'] = 2
-
-        self.edim = 0
-
-        self.wlookup = Embedding(len(vocab) + 3, self.wdims, name='embedding_vocab',
-                                 embeddings_initializer=tf.keras.initializers.random_normal(mean=0.0, stddev=1.0))
-        self.plookup = Embedding(len(pos) + 3, self.pdims, name='embedding_pos') if self.pdims > 0 else None
-        self.rlookup = Embedding(len(rels), self.rdims, name='embedding_rels') if self.rdims > 0 else None
-        self.olookup = Embedding(len(onto) + 3, self.odims, name='embedding_onto') if self.odims > 0 else None
-        self.clookup = Embedding(len(cpos) + 3, self.cdims, name='embedding_cpos') if self.cdims > 0 else None
 
         # LSTM Network architecture
         # First LSTM Layer
@@ -223,7 +226,9 @@ class MSTParserLSTMModel(tf.keras.Model):
 
     def call(self, sentence, errs, lerrs):
         # forward pass
-        self.process_sentence_embeddings(sentence)
+        # self.process_sentence_embeddings(sentence)
+        sentence_embeddings = self.embeddings(sentence)
+        print(sentence_embeddings)
         num_vec = len(sentence)  # time steps
 
         features_for = [entry.vec for entry in sentence]
@@ -262,28 +267,6 @@ class MSTParserLSTMModel(tf.keras.Model):
             errs += [(exprs[h][i] - exprs[g][i])[0]
                      for i, (h, g) in enumerate(zip(heads, gold)) if h != g]
         return e
-
-    def process_sentence_embeddings(self, sentence):
-        for entry in sentence:
-            c = float(self.wordsCount.get(entry.norm, 0))
-            dropFlag = (random.random() < (c / (0.25 + c)))
-            w_index = np.array(self.vocab.get(entry.norm, 0)).reshape(1) if dropFlag else np.array(0).reshape(1)
-            wordvec = self.wlookup(w_index) if self.wdims > 0 else None
-            o_index = np.array(self.onto[entry.onto] if random.random() < 0.9 else np.array(0).reshape(1))
-            ontovec = self.olookup(o_index) if self.odims > 0 else None
-            cpos_index = np.array(self.cpos[entry.cpos] if random.random() < 0.9 else np.array(0).reshape(1))
-            cposvec = self.clookup(cpos_index) if self.cdims > 0 else None
-            posvec = self.plookup(self.pos[entry.pos]) if self.pdims > 0 else None
-            evec = None
-            # The dot notation create attributes for the class ConllEntry in run time
-            # TODO: entry.vec returns a 3D numpy array check if it requires a 2D one
-            entry.vec = concatenate_arrays([wordvec, posvec, ontovec, cposvec, evec], 'numpy')
-            entry.lstms = [entry.vec, entry.vec]
-            entry.headfov = None
-            entry.modfov = None
-
-            entry.rheadfov = None
-            entry.rmodfov = None
 
     @staticmethod
     def get_lstm_output(lstm_model, input_sequence, initial_state):
