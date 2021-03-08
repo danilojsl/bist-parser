@@ -122,7 +122,7 @@ class MSTParserLSTMModel(nn.Module):
 
         self.outLayer = Parameter(
             (self.hidden2_units if self.hidden2_units > 0 else self.hidden_units, 1))
-        self.outBias = 0  # Parameter(1)
+        self.outBias = Parameter(1)
         self.routLayer = Parameter(
             (self.hidden2_units if self.hidden2_units > 0 else self.hidden_units, len(self.rel_list)))
         self.routBias = Parameter((len(self.rel_list)))
@@ -296,7 +296,7 @@ class MSTParserLSTMModel(nn.Module):
                 scalar(int(self.pos[entry.pos]))) if self.pdims > 0 else None
 
             evec = None
-            entry.vec = concatenate_tensors([wordvec, posvec, ontovec, cposvec, evec])
+            entry.vec = wordvec  # concatenate_tensors([wordvec, posvec, ontovec, cposvec, evec])
             entry.lstms = [entry.vec, entry.vec]
             entry.headfov = None
             entry.modfov = None
