@@ -333,8 +333,7 @@ class MSTParserLSTM:
         with open(conll_path, 'r') as conllFP:
             shuffledData = list(read_conll(conllFP))
             random.shuffle(shuffledData)
-            errs = []
-            lerrs = []
+
             for iSentence, sentence in enumerate(shuffledData):
                 if iSentence % 100 == 0 and iSentence != 0:
                     print('Processing sentence number:', iSentence,
@@ -365,7 +364,7 @@ class MSTParserLSTM:
                         entry.rheadfov = None
                         entry.rmodfov = None
 
-                    bi_lstm_input = self.get_model_input(conll_sentence)
+                    bi_lstm_input = self.get_bi_lstm_input(conll_sentence)
                     num_vec = len(conll_sentence)
                     bi_lstms_output = self.model.biLstms(bi_lstm_input, num_vec)
                     res_for_2 = tf.reshape(bi_lstms_output[0], shape=(num_vec, self.model.ldims))
@@ -377,10 +376,8 @@ class MSTParserLSTM:
                         lstms_1 = res_back_2[num_vec - i - 1]
                         concat_input.append([lstms_0, lstms_1])
 
-                    print('Come on JSL, Come on!!!')
                     e_output, errs, lerrs = self.model(concat_input, conll_sentence)
                     e_output = e_output.numpy()[0]
-                    # e_output = self.model(conll_sentence, errs, lerrs)
                     eerrors += e_output
                     eloss += e_output
                     mloss += e_output
@@ -399,8 +396,6 @@ class MSTParserLSTM:
                         self.trainer.apply_gradients(zip(grads, self.model.trainable_variables))
                         # print("After apply gradients")sources
                         # print(self.model.sources)
-                        errs = []
-                        lerrs = []
         # # if len(shuffledData) - 1 == iSentence:
         #     print('hidLayerFOM values on last iteration within an epoch')
         #     print(self.model.hidLayerFOM)
@@ -412,7 +407,7 @@ class MSTParserLSTM:
         w_index = np.array(self.model.vocab.get(entry.norm, 0)).reshape(1) if dropFlag else np.array(0).reshape(1)
         return w_index
 
-    def get_model_input(self, sentence):
+    def get_bi_lstm_input(self, sentence):
         num_vec = len(sentence)
         features_for = [entry.vec for entry in sentence]
         features_back = [entry.vec for entry in reversed(sentence)]
