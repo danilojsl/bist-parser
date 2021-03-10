@@ -141,17 +141,17 @@ class BiLSTMModule(tf.keras.layers.Layer):
 
 class ConcatHeadModule(tf.keras.layers.Layer):
 
-    def __init__(self, ldims, hidden_units, hidden2_units):
+    def __init__(self, ldims, hidden_units, hidden2_units, activation):
         super(ConcatHeadModule, self).__init__()
-        # Weight Initialization
-        hidden_units = hidden_units
-        hidden2_units = hidden2_units
+
+        self.activation = activation
+        self.hidden2_units = hidden2_units
         self.hidLayerFOH = Parameter((ldims * 2, hidden_units), 'hidLayerFOH')
         self.hidLayerFOM = Parameter((ldims * 2, hidden_units), 'hidLayerFOM')
         self.hidBias = Parameter(hidden_units, 'hidBias')
         self.catBias = Parameter(hidden_units * 2, 'catBias')
 
-        if hidden2_units:
+        if self.hidden2_units:
             self.hid2Layer = Parameter((hidden_units * 2, hidden2_units), 'hid2Layer')
             self.hid2Bias = Parameter(hidden2_units, 'hid2Bias')
 
@@ -159,25 +159,52 @@ class ConcatHeadModule(tf.keras.layers.Layer):
         # TODO: Verify if it works with Parameter(1) instead of 0
         self.outBias = Parameter(1)  # 0
 
-    def call(self, inputs):
+    def call(self, inputs, sentence):
         # Forward pass
-        lstms_i_0 = inputs[0]
-        lstms_i_1 = inputs[1]
-        lstms_j_0 = inputs[2]
-        lstms_j_1 = inputs[3]
-        concatenated_lstm = tf.reshape(concatenate_tensors([lstms_i_0, lstms_i_1]), shape=(1, -1))
-        headfov_i = tf.matmul(concatenated_lstm, self.hidLayerFOH)
-        concatenated_lstm = tf.reshape(concatenate_tensors([lstms_j_0, lstms_j_1]), shape=(1, -1))
-        modfov_j = tf.matmul(concatenated_lstm, self.hidLayerFOM)
+        scores, exprs = self.__evaluate(inputs, sentence)
+        gold = [entry.parent_id for entry in sentence]
+        heads = decoder.parse_proj(scores, gold)
 
+        e = sum([1 for h, g in zip(heads[1:], gold[1:]) if h != g])
+        errs = []
+        if e > 0:
+            errs += [(exprs[h][i] - exprs[g][i])[0]
+                     for i, (h, g) in enumerate(zip(heads, gold)) if h != g]
+
+        return [errs, tf.constant([e])]
+
+    def __evaluate(self, inputs, sentence):
+        head_vector = []
+        for index in range(len(inputs)):
+            lstms_0 = inputs[index][0]
+            lstms_1 = inputs[index][1]
+            concatenated_lstm = tf.reshape(concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
+            headfov = tf.matmul(concatenated_lstm, self.hidLayerFOH)
+            concatenated_lstm = tf.reshape(concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
+            modfov = tf.matmul(concatenated_lstm, self.hidLayerFOM)
+            sentence[index].headfov = headfov
+            sentence[index].modfov = modfov
+            head_vector.append([headfov, modfov])
+
+        exprs = [[self.__getExpr(head_vector, i, j) for j in range(len(head_vector))]
+                 for i in range(len(head_vector))]
+
+        scores = np.array([[output.numpy()[0, 0] for output in exprsRow]
+                           for exprsRow in exprs])
+
+        return scores, exprs
+
+    def __getExpr(self, head_vector, i, j):
+        headfov = head_vector[i][0]
+        modfov = head_vector[j][1]
         if self.hidden2_units > 0:
-            concatenated_result = concatenate_tensors([headfov_i, modfov_j])
+            concatenated_result = concatenate_tensors([headfov, modfov])
             activation_result = self.activation(concatenated_result + self.catBias)
             matmul_result = tf.matmul(activation_result, self.hid2Layer)
             next_activation_result = self.activation(self.hid2Bias + matmul_result)
             output = tf.matmul(next_activation_result, self.outLayer) + self.outBias
         else:
-            activation_result = self.activation(headfov_i + modfov_j + self.hidBias)
+            activation_result = self.activation(headfov + modfov + self.hidBias)
             output = tf.matmul(activation_result, self.outLayer) + self.outBias
 
         return output
@@ -185,8 +212,11 @@ class ConcatHeadModule(tf.keras.layers.Layer):
 
 class ConcatRelationModule(tf.keras.layers.Layer):
 
-    def __init__(self, rels, ldims, hidden_units, hidden2_units):
+    def __init__(self, rels, ldims, hidden_units, hidden2_units, activation):
         super(ConcatRelationModule, self).__init__()
+
+        self.activation = activation
+        self.hidden2_units = hidden2_units
         self.rhidLayerFOH = Parameter((2 * ldims, hidden_units), 'rhidLayerFOH')
         self.rhidLayerFOM = Parameter((2 * ldims, hidden_units), 'rhidLayerFOM')
         self.rhidBias = Parameter(hidden_units, 'rhidBias')
@@ -194,7 +224,7 @@ class ConcatRelationModule(tf.keras.layers.Layer):
         self.rels = {word: ind for ind, word in enumerate(rels)}
         self.rel_list = rels
 
-        if hidden2_units:
+        if self.hidden2_units:
             self.rhid2Layer = Parameter((hidden_units * 2, hidden2_units), 'rhid2Layer')
             self.rhid2Bias = Parameter(hidden2_units, 'rhid2Bias')
 
@@ -202,29 +232,43 @@ class ConcatRelationModule(tf.keras.layers.Layer):
                                    'routLayer')
         self.routBias = Parameter((len(self.rel_list)), 'routBias')
 
-    def call(self, inputs):
+    def call(self, inputs, sentence):
         # Forwad pass
-        lstms_i_0 = inputs[0]
-        lstms_i_1 = inputs[1]
-        lstms_j_0 = inputs[2]
-        lstms_j_1 = inputs[3]
+        gold = [entry.parent_id for entry in sentence]
+        lerrs = []
+        for modifier, head in enumerate(gold[1:]):
+            lstms_0 = inputs[head][0]
+            lstms_1 = inputs[modifier + 1][1]
 
-        concatenated_lstm = tf.reshape(concatenate_tensors([lstms_i_0, lstms_i_1]), shape=(1, -1))
-        rheadfov_i = tf.matmul(concatenated_lstm, self.rhidLayerFOH)
-        concatenated_lstm = tf.reshape(concatenate_tensors([lstms_j_0, lstms_j_1]), shape=(1, -1))
-        rmodfov_j = tf.matmul(concatenated_lstm, self.rhidLayerFOM)
+            if sentence[head].rheadfov is None:
+                concatenated_lstm = tf.reshape(concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
+                sentence[head].rheadfov = tf.matmul(concatenated_lstm, self.rhidLayerFOH)
+
+            if sentence[modifier + 1].modfov is None:
+                concatenated_lstm = tf.reshape(concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
+                sentence[modifier + 1].modfov = tf.matmul(concatenated_lstm, self.rhidLayerFOM)
+
+            rscores, rexprs = self.__evaluateLabel(sentence[head].rheadfov, sentence[modifier + 1].modfov)
+            goldLabelInd = self.rels[sentence[modifier + 1].relation]
+            wrongLabelInd = max(((l, scr) for l, scr in enumerate(rscores) if l != goldLabelInd), key=itemgetter(1))[0]
+            if rscores[goldLabelInd] < rscores[wrongLabelInd] + 1:
+                lerrs += [rexprs[wrongLabelInd] - rexprs[goldLabelInd]]
+
+        return lerrs
+
+    def __evaluateLabel(self, rheadfov, rmodfov):
 
         if self.hidden2_units > 0:
-            concatenated_result = concatenate_tensors([rheadfov_i, rmodfov_j])
+            concatenated_result = concatenate_tensors([rheadfov, rmodfov])
             activation_result = self.activation(concatenated_result + self.rcatBias)
             matmul_result = tf.matmul(activation_result, self.rhid2Layer)
             next_activation_result = self.activation(self.rhid2Bias + matmul_result)
             output = tf.matmul(next_activation_result, self.routLayer) + self.routBias
         else:
-            activation_result = self.activation(rheadfov_i + rmodfov_j + self.rhidBias)
+            activation_result = self.activation(rheadfov + rmodfov + self.rhidBias)
             output = tf.matmul(activation_result, self.routLayer) + self.routBias
 
-        return output
+        return output.numpy()[0], output[0]
 
 
 class MSTParserLSTMModel(tf.keras.Model):
@@ -232,8 +276,7 @@ class MSTParserLSTMModel(tf.keras.Model):
     def __init__(self, vocab, rels, enum_word, options):
         super(MSTParserLSTMModel, self).__init__()
         random.seed(1)
-
-        # Activation Functions for MLP
+        # Activation Functions for Concatenation Modules MLP
         self.activations = {'tanh': F.tanh, 'sigmoid': F.sigmoid, 'relu': F.relu}
         self.activation = self.activations[options.activation]
 
@@ -253,13 +296,20 @@ class MSTParserLSTMModel(tf.keras.Model):
         # Concatenation Layers
         self.hidden_units = options.hidden_units
         self.hidden2_units = options.hidden2_units
-        self.concatHeads = ConcatHeadModule(self.ldims, self.hidden_units, self.hidden2_units)
-        self.concatRelations = ConcatRelationModule(rels, self.ldims, self.hidden_units, self.hidden2_units)
+        self.concatHeads = ConcatHeadModule(self.ldims, self.hidden_units, self.hidden2_units, self.activation)
+        self.concatRelations = ConcatRelationModule(rels, self.ldims, self.hidden_units, self.hidden2_units,
+                                                    self.activation)
 
-    def call(self, inputs, num_vec):
+    def call(self, inputs, sentence):
         # Forward pass
-        #TODO: Implement concat module
-        return inputs
+        # TODO: Implement concat module
+        output = self.concatHeads(inputs, sentence)
+        errs = output[0]
+        e_tensor = output[1]
+
+        lerrs = self.concatRelations(inputs, sentence)
+
+        return [e_tensor, errs, lerrs]
 
 
 class MSTParserLSTM:
@@ -323,12 +373,14 @@ class MSTParserLSTM:
 
                     concat_input = []
                     for i in range(num_vec):
-                        concat_input.append(res_for_2[i])
-                        concat_input.append(res_back_2[num_vec - i - 1])
+                        lstms_0 = res_for_2[i]
+                        lstms_1 = res_back_2[num_vec - i - 1]
+                        concat_input.append([lstms_0, lstms_1])
 
                     print('Come on JSL, Come on!!!')
-                    e_output = self.model(conll_sentence, errs, lerrs)
-                    # here the errs and lerrs are output variables with tensor values after the forward
+                    e_output, errs, lerrs = self.model(concat_input, conll_sentence)
+                    e_output = e_output.numpy()[0]
+                    # e_output = self.model(conll_sentence, errs, lerrs)
                     eerrors += e_output
                     eloss += e_output
                     mloss += e_output
