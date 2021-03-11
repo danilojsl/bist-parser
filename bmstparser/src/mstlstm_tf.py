@@ -45,11 +45,6 @@ def get_optim(opt):
         return tf.keras.optimizers.Adam(learning_rate=opt.lr, epsilon=1e-8)
 
 
-def loss_function(y_true, y_pred):
-    l_variable = y_true + y_pred
-    return tf.reduce_sum(concatenate_tensors(l_variable))
-
-
 class EmbeddingsModule(tf.keras.layers.Layer):
 
     def __init__(self, vocab_size, wdims):
@@ -350,7 +345,7 @@ class MSTParserLSTM:
 
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
 
-                with tf.GradientTape(persistent=False, watch_accessed_variables=True) as tape:
+                with tf.GradientTape() as tape:
 
                     for entry in conll_sentence:
                         embeddings_input = self.get_embeddings_input(entry)
@@ -386,7 +381,7 @@ class MSTParserLSTM:
                     if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
                         if len(errs) > 0 or len(lerrs) > 0:
                             reshaped_lerrs = [tf.reshape(item, [1]) for item in lerrs]
-                            eerrs_sum = loss_function(errs, reshaped_lerrs)
+                            eerrs_sum = self.loss_function(errs, reshaped_lerrs)
 
                 if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
                     if len(errs) > 0 or len(lerrs) > 0:
@@ -400,6 +395,11 @@ class MSTParserLSTM:
         #     print('hidLayerFOM values on last iteration within an epoch')
         #     print(self.model.hidLayerFOM)
         print("Loss: ", mloss / iSentence)
+
+    @staticmethod
+    def loss_function(y_true, y_pred):
+        l_variable = y_true + y_pred
+        return tf.reduce_sum(concatenate_tensors(l_variable))
 
     def get_embeddings_input(self, entry):
         c = float(self.model.wordsCount.get(entry.norm, 0))

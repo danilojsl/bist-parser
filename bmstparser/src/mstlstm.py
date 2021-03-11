@@ -370,7 +370,6 @@ class MSTParserLSTM:
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
 
                 e_output, errs, lerrs = self.model.forward(conll_sentence)
-                # here the errs and lerrs variables have tensor values after the forward
                 eerrors += e_output
                 eloss += e_output
                 mloss += e_output
