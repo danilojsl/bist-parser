@@ -32,7 +32,7 @@ if __name__ == '__main__':
         parser.add_option("--oembedding", type="int", dest="oembedding_dims", default=0) #ontology
         parser.add_option("--cembedding", type="int", dest="cembedding_dims", default=0) #cpos
 
-        parser.add_option("--epochs", type="int", dest="epochs", default=5)
+        parser.add_option("--epochs", type="int", dest="epochs", default=10)
         parser.add_option("--hidden", type="int", dest="hidden_units", default=100)
         parser.add_option("--hidden2", type="int", dest="hidden2_units", default=0)
         parser.add_option("--optim", type="string", dest="optim", default='adam')

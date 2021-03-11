@@ -289,20 +289,30 @@ class MSTParserLSTMModel(tf.keras.Model):
         self.biLstms = BiLSTMModule(self.ldims)
 
         # Concatenation Layers
-        self.hidden_units = options.hidden_units
-        self.hidden2_units = options.hidden2_units
-        self.concatHeads = ConcatHeadModule(self.ldims, self.hidden_units, self.hidden2_units, self.activation)
-        self.concatRelations = ConcatRelationModule(rels, self.ldims, self.hidden_units, self.hidden2_units,
+        self.concatHeads = ConcatHeadModule(self.ldims, options.hidden_units, options.hidden2_units, self.activation)
+        self.concatRelations = ConcatRelationModule(rels, self.ldims, options.hidden_units, options.hidden2_units,
                                                     self.activation)
 
     def call(self, inputs, sentence):
         # Forward pass
-        # TODO: Implement concat module
-        output = self.concatHeads(inputs, sentence)
+        num_vec = len(sentence)
+        bi_lstms_output = self.biLstms(inputs, num_vec)
+        res_for_2 = tf.reshape(bi_lstms_output[0], shape=(num_vec, self.ldims))
+        res_back_2 = tf.reshape(bi_lstms_output[1], shape=(num_vec, self.ldims))
+
+        concat_input = []
+        for i in range(num_vec):
+            lstms_0 = res_for_2[i]
+            lstms_1 = res_back_2[num_vec - i - 1]
+            sentence[i].lstms[0] = lstms_0
+            sentence[i].lstms[1] = lstms_1
+            concat_input.append([lstms_0, lstms_1])
+
+        output = self.concatHeads(concat_input, sentence)
         errs = output[0]
         e_tensor = output[1]
 
-        lerrs = self.concatRelations(inputs, sentence)
+        lerrs = self.concatRelations(concat_input, sentence)
 
         return [e_tensor, errs, lerrs]
 
@@ -360,18 +370,7 @@ class MSTParserLSTM:
                         entry.rmodfov = None
 
                     bi_lstm_input = self.get_bi_lstm_input(conll_sentence)
-                    num_vec = len(conll_sentence)
-                    bi_lstms_output = self.model.biLstms(bi_lstm_input, num_vec)
-                    res_for_2 = tf.reshape(bi_lstms_output[0], shape=(num_vec, self.model.ldims))
-                    res_back_2 = tf.reshape(bi_lstms_output[1], shape=(num_vec, self.model.ldims))
-
-                    concat_input = []
-                    for i in range(num_vec):
-                        lstms_0 = res_for_2[i]
-                        lstms_1 = res_back_2[num_vec - i - 1]
-                        concat_input.append([lstms_0, lstms_1])
-
-                    e_output, errs, lerrs = self.model(concat_input, conll_sentence)
+                    e_output, errs, lerrs = self.model(bi_lstm_input, conll_sentence)
                     e_output = e_output.numpy()[0]
                     eerrors += e_output
                     eloss += e_output
