@@ -17,9 +17,9 @@ if __name__ == '__main__':
     if training_phase:
         parser.add_option("--predict", action="store_true", dest="predictFlag", default=False)
         parser.add_option("--train", dest="conll_train", help="Annotated CONLL train file", metavar="FILE",
-                          default="/corpus/en-small-ud-train.conllu")
+                          default="/corpus/en-tiny-ud-train.conllu")
         parser.add_option("--dev", dest="conll_dev", help="Annotated CONLL dev file", metavar="FILE",
-                          default="/corpus/en-small-ud-dev.conllu")
+                          default="/corpus/en-tiny-ud-dev.conllu")
 
         parser.add_option("--multi", dest="multi", help="Annotated CONLL multi-train file", metavar="FILE",
                           default=False)
@@ -43,7 +43,7 @@ if __name__ == '__main__':
 
         parser.add_option("--params", dest="params", help="Parameters file", metavar="FILE", default="params.pickle")
         parser.add_option("--model", dest="model", help="Load/Save model file", metavar="FILE",
-                          default="/model/neuralfirstorder.model")
+                          default="/model-tf/neuralfirstorder.model")
 
     else:
         parser.add_option("--predict", action="store_true", dest="predictFlag", default=True)
@@ -81,8 +81,8 @@ if __name__ == '__main__':
 
     print('Initializing mst-parser with Stateless LSTM:')
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-    tf.compat.v1.enable_eager_execution()
-    parser = mstlstm_tf.MSTParserLSTM(words, pos, rels, enum_word, options, onto, cpos)
+    # tf.compat.v1.enable_eager_execution()
+    parser = mstlstm_tf.MSTParserLSTM(words, rels, enum_word, options)
     for epoch in range(options.epochs):
         print('Starting epoch', epoch)
         parser.train(train_file)
