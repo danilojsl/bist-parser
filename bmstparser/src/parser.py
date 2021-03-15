@@ -1,7 +1,10 @@
+import multiprocessing
 import os.path
 import pickle
 import time
 from optparse import OptionParser
+
+import torch
 
 import mstlstm
 import utils
@@ -67,7 +70,7 @@ if __name__ == '__main__':
         parser.add_option("--hidden", type="int", dest="hidden_units", default=100)
         parser.add_option("--hidden2", type="int", dest="hidden2_units", default=0)
         parser.add_option("--optim", type="string", dest="optim", default='adam')
-        parser.add_option("--lr", type="float", dest="lr", default=0.1)
+        parser.add_option("--lr", type="float", dest="lr", default=1e-3)
         parser.add_option("--activation", type="string", dest="activation", default="tanh")
         parser.add_option("--lstmlayers", type="int", dest="lstm_layers", default=2)
         parser.add_option("--lstmdims", type="int", dest="lstm_dims", default=125)
@@ -88,11 +91,11 @@ if __name__ == '__main__':
                           default="/model/neuralfirstorder.model3")
 
     (options, args) = parser.parse_args()
-    # TODO: Uncomment multiprocess when not debugging
-    # max_thread = multiprocessing.cpu_count()
-    # active_thread = options.numthread if max_thread > options.numthread else max_thread
-    # torch.set_num_threads(active_thread)
-    # print(active_thread, "threads are in use")
+    # Comment multiprocess when debugging
+    max_thread = multiprocessing.cpu_count()
+    active_thread = options.numthread if max_thread > options.numthread else max_thread
+    torch.set_num_threads(active_thread)
+    print(active_thread, "threads are in use")
 
     # Added to run from IntelliJ
     os.chdir("../../")
@@ -138,6 +141,7 @@ if __name__ == '__main__':
                         print('LAS:%s' % l.strip().split()[-1])
     else:
         # Training classifier
+        print(f'Training with file {options.conll_train}')
         # Added to run from IntelliJ
         train_file = os.getcwd() + options.conll_train
         dev_file = os.getcwd() + options.conll_dev
