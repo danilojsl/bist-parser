@@ -54,9 +54,6 @@ class EmbeddingsModule(tf.keras.layers.Layer):
         self.wlookup = Embedding(vocab_size, self.wdims, name='embedding_vocab',
                                  embeddings_initializer=tf.keras.initializers.random_normal(mean=0.0, stddev=1.0))
 
-    # def build(self, input_shape):
-    #     print("Build on EmbeddingsModule")
-
     def call(self, inputs):
         # Forward pass
         word_vec = self.wlookup(inputs) if self.wdims > 0 else None
@@ -161,12 +158,9 @@ class ConcatHeadModule(tf.keras.layers.Layer):
             self.hid2Bias = Parameter(hidden2_units, 'hid2Bias')
 
         self.outLayer = Parameter((hidden2_units if hidden2_units > 0 else hidden_units, 1), 'outLayer')
-        self.outBias = Parameter(1)  # 0
+        self.outBias = Parameter(1)
 
         self.__sentence = None
-
-    # def build(self, input_shape):
-    #     print("Build on ConcatHeadModule")
 
     def set_sentence(self, sentence):
         self.__sentence = sentence
@@ -249,9 +243,6 @@ class ConcatRelationModule(tf.keras.layers.Layer):
         self.routBias = Parameter((len(self.rel_list)), 'routBias')
 
         self.__sentence = None
-
-    # def build(self, input_shape):
-    #     print("Build on ConcatRelationModule")
 
     def set_sentence(self, sentence):
         self.__sentence = sentence
