@@ -179,33 +179,16 @@ class MSTParserLSTMModel(nn.Module):
         return get_data(output).numpy()[0], output[0]
 
     def predict(self, sentence):
-        for entry in sentence:
-            wordvec = self.wlookup(
-                scalar(int(self.vocab.get(entry.norm, 0)))) if self.wdims > 0 else None
-            posvec = self.plookup(
-                scalar(int(self.pos[entry.pos]))) if self.pdims > 0 else None
-            ontovec = self.olookup(
-                scalar(int(self.onto[entry.onto]))) if self.odims > 0 else None
-            cposvec = self.clookup(
-                scalar(int(self.cpos[entry.cpos]))) if self.cdims > 0 else None
-            evec = None  # Used for external embeddings
-            entry.vec = concatenate_tensors([wordvec, posvec, ontovec, cposvec, evec])
 
-            entry.lstms = [entry.vec, entry.vec]
-            entry.headfov = None
-            entry.modfov = None
-
-            entry.rheadfov = None
-            entry.rmodfov = None
+        self.process_sentence_embeddings(sentence)
 
         num_vec = len(sentence)
-        vec_for = torch.cat(
-            [entry.vec for entry in sentence]).view(num_vec, 1, -1)
-        vec_back = torch.cat(
-            [entry.vec for entry in reversed(sentence)]).view(num_vec, 1, -1)
+        features_for = [entry.vec for entry in sentence]
+        features_back = [entry.vec for entry in reversed(sentence)]
+        vec_for = torch.cat(features_for).view(num_vec, 1, -1)
+        vec_back = torch.cat(features_back).view(num_vec, 1, -1)
         res_for_1, self.hid_for_1 = self.lstm_for_1(vec_for, self.hid_for_1)
-        res_back_1, self.hid_back_1 = self.lstm_back_1(
-            vec_back, self.hid_back_1)
+        res_back_1, self.hid_back_1 = self.lstm_back_1(vec_back, self.hid_back_1)
 
         vec_cat = [concatenate_tensors([res_for_1[i], res_back_1[num_vec - i - 1]])
                    for i in range(num_vec)]
@@ -213,14 +196,13 @@ class MSTParserLSTMModel(nn.Module):
         vec_for_2 = torch.cat(vec_cat).view(num_vec, 1, -1)
         vec_back_2 = torch.cat(list(reversed(vec_cat))).view(num_vec, 1, -1)
         res_for_2, self.hid_for_2 = self.lstm_for_2(vec_for_2, self.hid_for_2)
-        res_back_2, self.hid_back_2 = self.lstm_back_2(
-            vec_back_2, self.hid_back_2)
+        res_back_2, self.hid_back_2 = self.lstm_back_2(vec_back_2, self.hid_back_2)
 
         for i in range(num_vec):
             sentence[i].lstms[0] = res_for_2[i]
             sentence[i].lstms[1] = res_back_2[num_vec - i - 1]
 
-        scores, exprs = self.__evaluate(sentence, True)
+        scores, exprs = self.__evaluate(sentence)
         heads = decoder.parse_proj(scores)
 
         for entry, head in zip(sentence, heads):

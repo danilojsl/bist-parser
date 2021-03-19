@@ -51,7 +51,7 @@ if __name__ == '__main__':
     if training_phase:
         parser.add_option("--predict", action="store_true", dest="predictFlag", default=False)
         parser.add_option("--train", dest="conll_train", help="Annotated CONLL train file", metavar="FILE",
-                          default="/corpus/en-small-ud-train.conllu")
+                          default="/corpus/en-tiny-ud-train.conllu")
         parser.add_option("--dev", dest="conll_dev", help="Annotated CONLL dev file", metavar="FILE",
                           default="/corpus/en-mid-ud-dev.conllu")
 
@@ -160,6 +160,6 @@ if __name__ == '__main__':
             print('Starting epoch', epoch)
             parser.train(train_file)
             parser.save(os.path.join(output_file, os.path.basename(model_path) + str(epoch + 1)))
-            # evaluate_model()
+            evaluate_model()
 
 
