@@ -10,6 +10,8 @@ from tensorflow.keras.layers import Embedding
 from tensorflow.keras.layers import LSTM
 
 import decoder
+import decoder_tf
+import decoder_tf_v2
 import utils
 from utils import read_conll
 
@@ -165,24 +167,36 @@ class ConcatHeadModule(tf.keras.layers.Layer):
     def set_sentence(self, sentence):
         self.__sentence = sentence
 
-    def call(self, inputs):
+    def call(self, inputs, training):
+
+        # @tf.function
+        # def get_heads():
+        #     heads_tf = decoder_tf.parse_proj(scores, gold)
+        #     return heads_tf
+
         # Forward pass
         scores, exprs = self.__evaluate(inputs)
-        gold = [entry.parent_id for entry in self.__sentence]
-        heads = decoder.parse_proj(scores, gold)
+        if training:
+            gold = [entry.parent_id for entry in self.__sentence]
+            heads = decoder_tf_v2.parse_proj(scores, gold)
 
-        e = sum([1 for h, g in zip(heads[1:], gold[1:]) if h != g])
-        errs = []
-        if e > 0:
-            errs += [(exprs[h][i] - exprs[g][i])[0]
-                     for i, (h, g) in enumerate(zip(heads, gold)) if h != g]
-
-        return [errs, tf.constant([e])]
+            e = sum([1 for h, g in zip(heads[1:], gold[1:]) if h != g])
+            errs = []
+            if e > 0:
+                errs += [(exprs[h][i] - exprs[g][i])[0] for i, (h, g) in enumerate(zip(heads, gold)) if h != g]
+            output = [errs, tf.constant([e])]
+        else:
+            output = []
+        return output
 
     def __evaluate(self, inputs):
 
-        def convert_to_numpy(tensor_list):
-            return list(map(lambda t: t.numpy()[0, 0], tensor_list))
+        # @tf.function
+        # def convert_to_numpy(tensor_list):
+        #     return list(map(lambda t: t.numpy()[0, 0], tensor_list))
+
+        def transform_tensor(tensor_list):
+            return list(map(lambda tensor: tensor[0, 0], tensor_list))
 
         head_vector = []  # TODO: Check if this array must be a Tensor variable to save it in the model
         for index in range(len(inputs)):
@@ -196,11 +210,11 @@ class ConcatHeadModule(tf.keras.layers.Layer):
             # sentence[index].modfov = modfov
             head_vector.append([headfov, modfov])
 
-        exprs = [[self.__getExpr(head_vector, i, j) for j in range(len(head_vector))]
-                 for i in range(len(head_vector))]
+        exprs = [[self.__getExpr(head_vector, i, j) for j in range(len(head_vector))] for i in range(len(head_vector))]
 
         output_tensor = [[output for output in exprsRow] for exprsRow in exprs]
-        scores = np.array([convert_to_numpy(output) for output in output_tensor])
+        # scores = np.array([convert_to_numpy(output) for output in output_tensor])
+        scores = tf.stack([transform_tensor(output) for output in output_tensor])
 
         return scores, exprs
 
@@ -319,7 +333,7 @@ class MSTParserLSTMModel(tf.keras.Model):
     def set_sentence(self, sentence):
         self.__sentence = sentence
 
-    def call(self, inputs):
+    def call(self, inputs, training):
         # Forward pass
         # TODO: Raise error when inputs[0].shape.dims != inputs[1].shape.dims
         self.__num_vec = inputs[0].shape.dims[1]
@@ -338,7 +352,7 @@ class MSTParserLSTMModel(tf.keras.Model):
             concat_input.append([lstms_0, lstms_1])
 
         self.concatHeads.set_sentence(self.__sentence)
-        output = self.concatHeads(concat_input)
+        output = self.concatHeads(concat_input, training)
         errs = output[0]
         e_tensor = output[1]
 
@@ -402,7 +416,7 @@ class MSTParserLSTM:
                     bi_lstm_input = self.get_bi_lstm_input(conll_sentence)
 
                     self.model.set_sentence(conll_sentence)
-                    e_output, errs, lerrs = self.model(bi_lstm_input)
+                    e_output, errs, lerrs = self.model(bi_lstm_input, True)
 
                     e_output = e_output.numpy()[0]
                     eerrors += e_output

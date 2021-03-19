@@ -86,5 +86,5 @@ if __name__ == '__main__':
     for epoch in range(options.epochs):
         print('Starting epoch', epoch)
         parser.train(train_file)
-        # parser.save(os.path.join(output_file, os.path.basename(model_path) + str(epoch + 1)))
+        parser.save(os.path.join(output_file, os.path.basename(model_path) + str(epoch + 1)))
         # parser.save("/home/dburbano/IdeaProjects/JSL/bist-parser-tensorflow/model-tf")

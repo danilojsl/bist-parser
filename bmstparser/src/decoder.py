@@ -8,11 +8,11 @@ def parse_proj(scores, gold=None):
     '''
     Parse using Eisner's algorithm.
     '''
-    nr, nc = np.shape(scores)
-    if nr != nc:
+    number_rows, number_columns = np.shape(scores)
+    if number_rows != number_columns:
         raise ValueError("scores must be a squared matrix with nw+1 rows")
 
-    N = nr - 1  # Number of words (excluding root).
+    N = number_rows - 1  # Number of words (excluding root).
 
     # Initialize CKY table.
     complete = np.zeros([N + 1, N + 1, 2])  # s, t, direction (right=1).
@@ -20,9 +20,7 @@ def parse_proj(scores, gold=None):
     complete_backtrack = -np.ones([N + 1, N + 1, 2], dtype=int)  # s, t, direction (right=1).
     incomplete_backtrack = -np.ones([N + 1, N + 1, 2], dtype=int)  # s, t, direction (right=1).
 
-    incomplete[0, :, 0] -= np.inf
-
-    # Loop from smaller items to larger items.
+    # Loop from smaller itncems to larger items.
     for k in range(1, N + 1):
         for s in range(N - k + 1):
             t = s + k
@@ -49,14 +47,8 @@ def parse_proj(scores, gold=None):
             complete[s, t, 1] = np.max(complete_vals1)
             complete_backtrack[s, t, 1] = s + 1 + np.argmax(complete_vals1)
 
-    value = complete[0][N][1]
     heads = [-1 for _ in range(N + 1)]  # -np.ones(N+1, dtype=int)
     backtrack_eisner(incomplete_backtrack, complete_backtrack, 0, N, 1, 1, heads)
-
-    value_proj = 0.0
-    for m in range(1, N + 1):
-        h = heads[m]
-        value_proj += scores[h, m]
 
     return heads
 
