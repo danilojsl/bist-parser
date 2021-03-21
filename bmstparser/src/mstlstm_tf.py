@@ -9,9 +9,7 @@ import tensorflow.keras.activations as F
 from tensorflow.keras.layers import Embedding
 from tensorflow.keras.layers import LSTM
 
-import decoder
 import decoder_tf
-import decoder_tf_v2
 import utils
 from utils import read_conll
 
@@ -50,7 +48,7 @@ def get_optim(opt):
 class EmbeddingsModule(tf.keras.layers.Layer):
 
     def __init__(self, vocab_size, wdims):
-        super().__init__()
+        super().__init__(name="EmbeddingsModule")
         self.wdims = wdims
 
         self.wlookup = Embedding(vocab_size, self.wdims, name='embedding_vocab',
@@ -68,10 +66,9 @@ class FirstBiLSTMModule(tf.keras.layers.Layer):
         super().__init__()
         # Input data
         self.sample_size = 1  # batch size
+        self.lstm_dims = lstm_dims
         self.lstm_for_1 = LSTM(lstm_dims, return_sequences=True, return_state=True)
         self.lstm_back_1 = LSTM(lstm_dims, return_sequences=True, return_state=True)
-        # Initializing hidden and cell states values to 0
-        self.hid_for_1, self.hid_back_1 = [init_hidden(lstm_dims) for _ in range(2)]
 
         self.__num_vec = None
 
@@ -82,8 +79,10 @@ class FirstBiLSTMModule(tf.keras.layers.Layer):
 
         vec_for = inputs[0]
         vec_back = inputs[1]
-        res_for_1, self.hid_for_1 = self.get_lstm_output(self.lstm_for_1, vec_for, self.hid_for_1)
-        res_back_1, self.hid_back_1 = self.get_lstm_output(self.lstm_back_1, vec_back, self.hid_back_1)
+        hid_for_1, hid_back_1 = [init_hidden(self.lstm_dims) for _ in range(2)]
+
+        res_for_1, hid_for_1 = self.get_lstm_output(self.lstm_for_1, vec_for, hid_for_1)
+        res_back_1, hid_back_1 = self.get_lstm_output(self.lstm_back_1, vec_back, hid_back_1)
 
         vec_cat = concatenate_layers(res_for_1[0], res_back_1[0], self.__num_vec)
 
@@ -104,17 +103,17 @@ class NextBiLSTMModule(tf.keras.layers.Layer):
     def __init__(self, lstm_dims):
         super().__init__()
         # Input data
+        self.lstm_dims = lstm_dims
         self.lstm_for_2 = LSTM(lstm_dims, return_sequences=True, return_state=True)
         self.lstm_back_2 = LSTM(lstm_dims, return_sequences=True, return_state=True)
-        # Initializing hidden and cell states values to 0
-        self.hid_for_2, self.hid_back_2 = [init_hidden(lstm_dims) for _ in range(2)]
 
     def call(self, inputs):
         # Forward pass
         vec_for_2 = inputs[0]
         vec_back_2 = inputs[1]
-        res_for_2, self.hid_for_2 = self.get_lstm_output(self.lstm_for_2, vec_for_2, self.hid_for_2)
-        res_back_2, self.hid_back_2 = self.get_lstm_output(self.lstm_back_2, vec_back_2, self.hid_back_2)
+        hid_for_2, hid_back_2 = [init_hidden(self.lstm_dims) for _ in range(2)]
+        res_for_2, hid_for_2 = self.get_lstm_output(self.lstm_for_2, vec_for_2, hid_for_2)
+        res_back_2, hid_back_2 = self.get_lstm_output(self.lstm_back_2, vec_back_2, hid_back_2)
 
         return [res_for_2, res_back_2]
 
@@ -167,33 +166,13 @@ class ConcatHeadModule(tf.keras.layers.Layer):
     def set_sentence(self, sentence):
         self.__sentence = sentence
 
-    def call(self, inputs, training):
-
-        # @tf.function
-        # def get_heads():
-        #     heads_tf = decoder_tf.parse_proj(scores, gold)
-        #     return heads_tf
-
+    def call(self, inputs):
         # Forward pass
         scores, exprs = self.__evaluate(inputs)
-        if training:
-            gold = [entry.parent_id for entry in self.__sentence]
-            heads = decoder_tf_v2.parse_proj(scores, gold)
 
-            e = sum([1 for h, g in zip(heads[1:], gold[1:]) if h != g])
-            errs = []
-            if e > 0:
-                errs += [(exprs[h][i] - exprs[g][i])[0] for i, (h, g) in enumerate(zip(heads, gold)) if h != g]
-            output = [errs, tf.constant([e])]
-        else:
-            output = []
-        return output
+        return [scores, exprs]
 
     def __evaluate(self, inputs):
-
-        # @tf.function
-        # def convert_to_numpy(tensor_list):
-        #     return list(map(lambda t: t.numpy()[0, 0], tensor_list))
 
         def transform_tensor(tensor_list):
             return list(map(lambda tensor: tensor[0, 0], tensor_list))
@@ -236,7 +215,7 @@ class ConcatHeadModule(tf.keras.layers.Layer):
 
 class ConcatRelationModule(tf.keras.layers.Layer):
 
-    def __init__(self, rels, ldims, hidden_units, hidden2_units, activation):
+    def __init__(self, relations_size, ldims, hidden_units, hidden2_units, activation):
         super().__init__()
 
         self.activation = activation
@@ -245,26 +224,26 @@ class ConcatRelationModule(tf.keras.layers.Layer):
         self.rhidLayerFOM = Parameter((2 * ldims, hidden_units), 'rhidLayerFOM')
         self.rhidBias = Parameter(hidden_units, 'rhidBias')
         self.rcatBias = Parameter(hidden_units * 2, 'rcatBias')
-        self.rels = {word: ind for ind, word in enumerate(rels)}
-        self.rel_list = rels
 
         if self.hidden2_units:
             self.rhid2Layer = Parameter((hidden_units * 2, hidden2_units), 'rhid2Layer')
             self.rhid2Bias = Parameter(hidden2_units, 'rhid2Bias')
 
-        self.routLayer = Parameter((hidden2_units if hidden2_units > 0 else hidden_units, len(self.rel_list)),
+        self.routLayer = Parameter((hidden2_units if hidden2_units > 0 else hidden_units, relations_size),
                                    'routLayer')
-        self.routBias = Parameter((len(self.rel_list)), 'routBias')
+        self.routBias = Parameter(relations_size, 'routBias')
 
         self.__sentence = None
 
     def set_sentence(self, sentence):
         self.__sentence = sentence
 
-    def call(self, inputs):
+    def call(self, inputs, training):
         # Forwad pass
+        rscores_list = []
+        if self.__sentence is None:
+            return rscores_list
         gold = [entry.parent_id for entry in self.__sentence]
-        lerrs = []
         for modifier, head in enumerate(gold[1:]):
             lstms_0 = inputs[head][0]
             lstms_1 = inputs[modifier + 1][1]
@@ -277,13 +256,10 @@ class ConcatRelationModule(tf.keras.layers.Layer):
                 concatenated_lstm = tf.reshape(concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
                 self.__sentence[modifier + 1].modfov = tf.matmul(concatenated_lstm, self.rhidLayerFOM)
 
-            rscores, rexprs = self.__evaluateLabel(self.__sentence[head].rheadfov, self.__sentence[modifier + 1].modfov)
-            goldLabelInd = self.rels[self.__sentence[modifier + 1].relation]
-            wrongLabelInd = max(((l, scr) for l, scr in enumerate(rscores) if l != goldLabelInd), key=itemgetter(1))[0]
-            if rscores[goldLabelInd] < rscores[wrongLabelInd] + 1:
-                lerrs += [rexprs[wrongLabelInd] - rexprs[goldLabelInd]]
+            rscores = self.__evaluateLabel(self.__sentence[head].rheadfov, self.__sentence[modifier + 1].modfov)
+            rscores_list.append(rscores)
 
-        return lerrs
+        return rscores_list
 
     def __evaluateLabel(self, rheadfov, rmodfov):
 
@@ -297,12 +273,12 @@ class ConcatRelationModule(tf.keras.layers.Layer):
             activation_result = self.activation(rheadfov + rmodfov + self.rhidBias)
             output = tf.matmul(activation_result, self.routLayer) + self.routBias
 
-        return output.numpy()[0], output[0]
+        return output[0]
 
 
 class MSTParserLSTMModel(tf.keras.Model):
 
-    def __init__(self, vocab, rels, enum_word, options):
+    def __init__(self, vocab, relations_size, enum_word, options):
         super().__init__()
         random.seed(1)
         # Activation Functions for Concatenation Modules MLP
@@ -324,11 +300,10 @@ class MSTParserLSTMModel(tf.keras.Model):
 
         # Concatenation Layers
         self.concatHeads = ConcatHeadModule(self.ldims, options.hidden_units, options.hidden2_units, self.activation)
-        self.concatRelations = ConcatRelationModule(rels, self.ldims, options.hidden_units, options.hidden2_units,
-                                                    self.activation)
+        self.concatRelations = ConcatRelationModule(relations_size, self.ldims, options.hidden_units,
+                                                    options.hidden2_units, self.activation)
 
         self.__sentence = None
-        self.__num_vec = None
 
     def set_sentence(self, sentence):
         self.__sentence = sentence
@@ -336,36 +311,39 @@ class MSTParserLSTMModel(tf.keras.Model):
     def call(self, inputs, training):
         # Forward pass
         # TODO: Raise error when inputs[0].shape.dims != inputs[1].shape.dims
-        self.__num_vec = inputs[0].shape.dims[1]
+        num_vec = inputs[0].shape.dims[1]
         self.biLstms.set_sentence(self.__sentence)
 
         bi_lstms_output = self.biLstms(inputs)
-        res_for_2 = tf.reshape(bi_lstms_output[0], shape=(self.__num_vec, self.ldims))
-        res_back_2 = tf.reshape(bi_lstms_output[1], shape=(self.__num_vec, self.ldims))
+        res_for_2 = tf.reshape(bi_lstms_output[0], shape=(num_vec, self.ldims))
+        res_back_2 = tf.reshape(bi_lstms_output[1], shape=(num_vec, self.ldims))
 
         concat_input = []
-        for i in range(self.__num_vec):
+        for i in range(num_vec):
             lstms_0 = res_for_2[i]
-            lstms_1 = res_back_2[self.__num_vec - i - 1]
+            lstms_1 = res_back_2[num_vec - i - 1]
             # sentence[i].lstms[0] = lstms_0
             # sentence[i].lstms[1] = lstms_1
             concat_input.append([lstms_0, lstms_1])
 
         self.concatHeads.set_sentence(self.__sentence)
-        output = self.concatHeads(concat_input, training)
-        errs = output[0]
-        e_tensor = output[1]
+        heads_output = self.concatHeads(concat_input)
 
         self.concatRelations.set_sentence(self.__sentence)
-        lerrs = self.concatRelations(concat_input)
+        relations_output = self.concatRelations(concat_input)
 
-        return [e_tensor, errs, lerrs]
+        self.concatHeads.set_sentence(None)
+        self.concatRelations.set_sentence(None)
+        return [heads_output, relations_output]
 
 
 class MSTParserLSTM:
 
     def __init__(self, vocab, rels, enum_word, options):
-        self.model = MSTParserLSTMModel(vocab, rels, enum_word, options)
+        self.rels = {word: ind for ind, word in enumerate(rels)}
+        self.rel_list = rels
+
+        self.model = MSTParserLSTMModel(vocab, len(self.rel_list), enum_word, options)
         self.trainer = get_optim(options)
 
         # Input data
@@ -416,9 +394,13 @@ class MSTParserLSTM:
                     bi_lstm_input = self.get_bi_lstm_input(conll_sentence)
 
                     self.model.set_sentence(conll_sentence)
-                    e_output, errs, lerrs = self.model(bi_lstm_input, True)
+                    model_output = self.model(bi_lstm_input, True)
+                    heads_output = model_output[0]
+                    relations_output = model_output[1]
 
-                    e_output = e_output.numpy()[0]
+                    lerrs = self.get_relation_errors(relations_output, conll_sentence)
+                    errs, e_output = self.get_head_errors(conll_sentence, heads_output)
+
                     eerrors += e_output
                     eloss += e_output
                     mloss += e_output
@@ -433,6 +415,7 @@ class MSTParserLSTM:
                     if len(errs) > 0 or len(lerrs) > 0:
                         grads = tape.gradient(eerrs_sum, self.model.trainable_variables)
                         self.trainer.apply_gradients(zip(grads, self.model.trainable_variables))
+                self.model.set_sentence(None)
         print("Loss: ", mloss / iSentence)
 
     @staticmethod
@@ -444,6 +427,7 @@ class MSTParserLSTM:
         c = float(self.model.wordsCount.get(entry.norm, 0))
         dropFlag = (random.random() < (c / (0.25 + c)))
         w_index = np.array(self.model.vocab.get(entry.norm, 0)).reshape(1) if dropFlag else np.array(0).reshape(1)
+
         return w_index
 
     def get_bi_lstm_input(self, sentence):
@@ -452,10 +436,36 @@ class MSTParserLSTM:
         features_back = [entry.vec for entry in reversed(sentence)]
         vec_for = tf.reshape(tf.concat(features_for, 0), shape=(self.sample_size, num_vec, -1))
         vec_back = tf.reshape(tf.concat(features_back, 0), shape=(self.sample_size, num_vec, -1))
+
         return [vec_for, vec_back]
+
+    @staticmethod
+    def get_head_errors(sentence, heads_output):
+        scores, exprs = heads_output[0], heads_output[1]
+
+        gold = [entry.parent_id for entry in sentence]
+        heads = decoder_tf.parse_proj(scores, gold)
+
+        e_output = sum([1 for h, g in zip(heads[1:], gold[1:]) if h != g])
+        errs = []
+        if e_output > 0:
+            errs += [(exprs[h][i] - exprs[g][i])[0] for i, (h, g) in enumerate(zip(heads, gold)) if h != g]
+
+        return errs, e_output
+
+    def get_relation_errors(self, relations_output, sentence):
+        lerrs = []
+        for modifier, rscores in enumerate(relations_output):
+            goldLabelInd = self.rels[sentence[modifier + 1].relation]
+            wrongLabelInd = max(((l, scr) for l, scr in enumerate(rscores) if l != goldLabelInd),
+                                key=itemgetter(1))[0]
+            if rscores[goldLabelInd] < rscores[wrongLabelInd] + 1:
+                lerrs += [rscores[wrongLabelInd] - rscores[goldLabelInd]]
+
+        return lerrs
 
     def save(self, fn):
         tmp = fn + '.tmp'
-        tf.saved_model.save(self.model, tmp)
+        tf.keras.models.save_model(self.model, tmp)
+        # tf.saved_model.save(self.model, tmp)
         shutil.move(tmp, fn)
-        # tf.saved_model.simple_save

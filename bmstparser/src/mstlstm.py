@@ -179,24 +179,7 @@ class MSTParserLSTMModel(nn.Module):
         return get_data(output).numpy()[0], output[0]
 
     def predict(self, sentence):
-        for entry in sentence:
-            wordvec = self.wlookup(
-                scalar(int(self.vocab.get(entry.norm, 0)))) if self.wdims > 0 else None
-            posvec = self.plookup(
-                scalar(int(self.pos[entry.pos]))) if self.pdims > 0 else None
-            ontovec = self.olookup(
-                scalar(int(self.onto[entry.onto]))) if self.odims > 0 else None
-            cposvec = self.clookup(
-                scalar(int(self.cpos[entry.cpos]))) if self.cdims > 0 else None
-            evec = None  # Used for external embeddings
-            entry.vec = concatenate_tensors([wordvec, posvec, ontovec, cposvec, evec])
-
-            entry.lstms = [entry.vec, entry.vec]
-            entry.headfov = None
-            entry.modfov = None
-
-            entry.rheadfov = None
-            entry.rmodfov = None
+        self.process_sentence_embeddings(sentence)
 
         num_vec = len(sentence)
         vec_for = torch.cat(
@@ -297,29 +280,6 @@ class MSTParserLSTMModel(nn.Module):
             wordvec = self.wlookup(scalar(w_index)) if self.wdims > 0 else None
 
             entry.vec = wordvec
-            entry.lstms = [entry.vec, entry.vec]
-            entry.headfov = None
-            entry.modfov = None
-
-            entry.rheadfov = None
-            entry.rmodfov = None
-
-    def process_sentence_embeddings(self, sentence):
-        for entry in sentence:
-            c = float(self.wordsCount.get(entry.norm, 0))
-            # dropFlag = (random.random() < (c / (0.33 + c)))
-            dropFlag = (random.random() < (c / (0.25 + c)))
-            wordvec = self.wlookup(scalar(
-                int(self.vocab.get(entry.norm, 0)) if dropFlag else 0)) if self.wdims > 0 else None
-            ontovec = self.olookup(scalar(int(self.onto[entry.onto]) if random.random(
-            ) < 0.9 else 0)) if self.odims > 0 else None
-            cposvec = self.clookup(scalar(int(self.cpos[entry.cpos]) if random.random(
-            ) < 0.9 else 0)) if self.cdims > 0 else None
-            posvec = self.plookup(
-                scalar(int(self.pos[entry.pos]))) if self.pdims > 0 else None
-
-            evec = None
-            entry.vec = concatenate_tensors([wordvec, posvec, ontovec, cposvec, evec])
             entry.lstms = [entry.vec, entry.vec]
             entry.headfov = None
             entry.modfov = None

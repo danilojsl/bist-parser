@@ -11,7 +11,7 @@ if __name__ == '__main__':
 
     training_phase = True  # False implies prediction phase
 
-    parser.add_option("--outdir", type="string", dest="output", default="/model-tf")
+    parser.add_option("--outdir", type="string", dest="output", default="/model-tiny-tf")
     parser.add_option("--numthread", type="int", dest="numthread", default=8)
 
     if training_phase:
@@ -32,7 +32,7 @@ if __name__ == '__main__':
         parser.add_option("--oembedding", type="int", dest="oembedding_dims", default=0) #ontology
         parser.add_option("--cembedding", type="int", dest="cembedding_dims", default=0) #cpos
 
-        parser.add_option("--epochs", type="int", dest="epochs", default=10)
+        parser.add_option("--epochs", type="int", dest="epochs", default=3)
         parser.add_option("--hidden", type="int", dest="hidden_units", default=100)
         parser.add_option("--hidden2", type="int", dest="hidden2_units", default=0)
         parser.add_option("--optim", type="string", dest="optim", default='adam')
@@ -43,7 +43,7 @@ if __name__ == '__main__':
 
         parser.add_option("--params", dest="params", help="Parameters file", metavar="FILE", default="params.pickle")
         parser.add_option("--model", dest="model", help="Load/Save model file", metavar="FILE",
-                          default="/model-tf/neuralfirstorder.model")
+                          default="/model-tiny-tf/neuralfirstorder.model")
 
     else:
         parser.add_option("--predict", action="store_true", dest="predictFlag", default=True)
@@ -87,4 +87,3 @@ if __name__ == '__main__':
         print('Starting epoch', epoch)
         parser.train(train_file)
         parser.save(os.path.join(output_file, os.path.basename(model_path) + str(epoch + 1)))
-        # parser.save("/home/dburbano/IdeaProjects/JSL/bist-parser-tensorflow/model-tf")
