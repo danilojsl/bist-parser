@@ -308,7 +308,7 @@ class MSTParserLSTMModel(tf.keras.Model):
     def set_sentence(self, sentence):
         self.__sentence = sentence
 
-    def call(self, inputs, training):
+    def call(self, inputs):
         # Forward pass
         # TODO: Raise error when inputs[0].shape.dims != inputs[1].shape.dims
         num_vec = inputs[0].shape.dims[1]
@@ -322,8 +322,6 @@ class MSTParserLSTMModel(tf.keras.Model):
         for i in range(num_vec):
             lstms_0 = res_for_2[i]
             lstms_1 = res_back_2[num_vec - i - 1]
-            # sentence[i].lstms[0] = lstms_0
-            # sentence[i].lstms[1] = lstms_1
             concat_input.append([lstms_0, lstms_1])
 
         self.concatHeads.set_sentence(self.__sentence)
@@ -365,11 +363,7 @@ class MSTParserLSTM:
             for iSentence, sentence in enumerate(shuffledData):
                 if iSentence % 100 == 0 and iSentence != 0:
                     print('Processing sentence number:', iSentence,
-                          'eloss:', eloss,
-                          'etotal:', etotal,
                           'Loss:', eloss / etotal,
-                          'eerrors:', float(eerrors),
-                          'Errors:', (float(eerrors)) / etotal,
                           'Time', time.time() - start)
                     start = time.time()
                     eerrors = 0
@@ -394,7 +388,7 @@ class MSTParserLSTM:
                     bi_lstm_input = self.get_bi_lstm_input(conll_sentence)
 
                     self.model.set_sentence(conll_sentence)
-                    model_output = self.model(bi_lstm_input, True)
+                    model_output = self.model(bi_lstm_input)
                     heads_output = model_output[0]
                     relations_output = model_output[1]
 
@@ -416,6 +410,7 @@ class MSTParserLSTM:
                         grads = tape.gradient(eerrs_sum, self.model.trainable_variables)
                         self.trainer.apply_gradients(zip(grads, self.model.trainable_variables))
                 self.model.set_sentence(None)
+
         print("Loss: ", mloss / iSentence)
 
     @staticmethod
