@@ -63,7 +63,7 @@ class EmbeddingsModule(tf.keras.layers.Layer):
 class FirstBiLSTMModule(tf.keras.layers.Layer):
 
     def __init__(self, lstm_dims):
-        super().__init__()
+        super().__init__(name="FirstBiLSTMModule")
         # Input data
         self.sample_size = 1  # batch size
         self.lstm_dims = lstm_dims
@@ -101,7 +101,7 @@ class FirstBiLSTMModule(tf.keras.layers.Layer):
 class NextBiLSTMModule(tf.keras.layers.Layer):
 
     def __init__(self, lstm_dims):
-        super().__init__()
+        super().__init__(name="NextBiLSTMModule")
         # Input data
         self.lstm_dims = lstm_dims
         self.lstm_for_2 = LSTM(lstm_dims, return_sequences=True, return_state=True)
@@ -127,7 +127,7 @@ class NextBiLSTMModule(tf.keras.layers.Layer):
 class BiLSTMModule(tf.keras.layers.Layer):
 
     def __init__(self, lstm_dims):
-        super().__init__()
+        super().__init__(name="BiLSTMModule")
         self.biLstm1 = FirstBiLSTMModule(lstm_dims)
         self.biLstm2 = NextBiLSTMModule(lstm_dims)
         self.__sentence = None
@@ -145,7 +145,7 @@ class BiLSTMModule(tf.keras.layers.Layer):
 class ConcatHeadModule(tf.keras.layers.Layer):
 
     def __init__(self, ldims, hidden_units, hidden2_units, activation):
-        super().__init__()
+        super().__init__("ConcatHeadModule")
 
         self.activation = activation
         self.hidden2_units = hidden2_units
@@ -216,7 +216,7 @@ class ConcatHeadModule(tf.keras.layers.Layer):
 class ConcatRelationModule(tf.keras.layers.Layer):
 
     def __init__(self, relations_size, ldims, hidden_units, hidden2_units, activation):
-        super().__init__()
+        super().__init__(name="ConcatRelationModule")
 
         self.activation = activation
         self.hidden2_units = hidden2_units

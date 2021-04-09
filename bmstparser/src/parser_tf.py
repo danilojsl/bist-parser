@@ -1,24 +1,26 @@
 import os
+import shutil
 from optparse import OptionParser
+from os import path
 
 import tensorflow as tf
 
-import mstlstm_tf
 import utils
+import mstlstm_tf
 
 if __name__ == '__main__':
     parser = OptionParser()
 
-    parser.add_option("--outdir", type="string", dest="output", default="/model-tf")
+    parser.add_option("--outdir", type="string", dest="output", default="/model-tiny-tf")
 
     parser.add_option("--train", dest="conll_train", help="Annotated CONLL train file", metavar="FILE",
-                      default="/corpus/en-small-ud-train.conllu")
+                      default="/corpus/en-tiny-ud-train.conllu")
 
     # multi-task has been deleted for bloated code
 
     parser.add_option("--wembedding", type="int", dest="wembedding_dims", default=100)
 
-    parser.add_option("--epochs", type="int", dest="epochs", default=7)
+    parser.add_option("--epochs", type="int", dest="epochs", default=3)
     parser.add_option("--hidden", type="int", dest="hidden_units", default=100)
     parser.add_option("--hidden2", type="int", dest="hidden2_units", default=0)
     parser.add_option("--optim", type="string", dest="optim", default='adam')
@@ -27,7 +29,7 @@ if __name__ == '__main__':
     parser.add_option("--lstmdims", type="int", dest="lstm_dims", default=125)
 
     parser.add_option("--model", dest="model", help="Load/Save model file", metavar="FILE",
-                      default="/model-tf/neuralfirstorder.model")
+                      default="neuralfirstorder.model")
 
     (options, args) = parser.parse_args()
 
@@ -35,10 +37,13 @@ if __name__ == '__main__':
     # Added to run from IntelliJ
     os.chdir("../../")
     print('Current directory: ' + os.getcwd())
-    output_file = os.getcwd() + options.output
-    model_path = os.getcwd() + options.model
+    output_path = os.getcwd() + options.output
+    model_name = options.model
     utils_path = os.getcwd() + '/bmstparser/src/utils/'  # 'src/utils/'
     # Added to run from IntelliJ
+    if path.exists(output_path):
+        shutil.rmtree(output_path)
+    os.mkdir(output_path)
 
     # Training classifier
     print(f'Training with file {options.conll_train}')
@@ -52,9 +57,11 @@ if __name__ == '__main__':
 
     print('Initializing mst-parser with Stateless LSTM:')
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-    # tf.compat.v1.enable_eager_execution()
     parser = mstlstm_tf.MSTParserLSTM(words, rels, enum_word, options)
     for epoch in range(options.epochs):
         print('Starting epoch', epoch)
         parser.train(train_file)
-        parser.save(os.path.join(output_file, os.path.basename(model_path) + str(epoch + 1)))
+
+        print('Saving model...')
+        base_name = output_path + '/' + model_name
+        parser.save(os.path.join(output_path, os.path.basename(base_name) + str(epoch + 1)))
