@@ -372,20 +372,20 @@ class MSTParserLSTM:
 
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
 
+                for entry in conll_sentence:
+                    embeddings_input = self.get_embeddings_input(entry)
+                    word_vec = self.model.embeddings(embeddings_input)
+                    entry.vec = word_vec
+                    entry.lstms = [entry.vec, entry.vec]
+                    entry.headfov = None
+                    entry.modfov = None
+
+                    entry.rheadfov = None
+                    entry.rmodfov = None
+
+                bi_lstm_input = self.get_bi_lstm_input(conll_sentence)
+
                 with tf.GradientTape() as tape:
-
-                    for entry in conll_sentence:
-                        embeddings_input = self.get_embeddings_input(entry)
-                        word_vec = self.model.embeddings(embeddings_input)
-                        entry.vec = word_vec
-                        entry.lstms = [entry.vec, entry.vec]
-                        entry.headfov = None
-                        entry.modfov = None
-
-                        entry.rheadfov = None
-                        entry.rmodfov = None
-
-                    bi_lstm_input = self.get_bi_lstm_input(conll_sentence)
 
                     self.model.set_sentence(conll_sentence)
                     model_output = self.model(bi_lstm_input)
