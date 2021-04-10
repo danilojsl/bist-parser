@@ -60,86 +60,115 @@ class EmbeddingsModule(tf.keras.layers.Layer):
         return word_vec
 
 
-class FirstBiLSTMModule(tf.keras.layers.Layer):
+class FirstBlockLSTMModule(tf.keras.layers.Layer):
 
     def __init__(self, lstm_dims):
-        super().__init__(name="FirstBiLSTMModule")
-        # Input data
-        self.sample_size = 1  # batch size
-        self.lstm_dims = lstm_dims
-        self.lstm_for_1 = LSTM(lstm_dims, return_sequences=True, return_state=True)
-        self.lstm_back_1 = LSTM(lstm_dims, return_sequences=True, return_state=True)
+        super().__init__(name="FirstBlockLSTMModule")
+        self.initializer = tf.keras.initializers.GlorotUniform()  # Xavier uniform
+        self.sample_size = 1
+        self.ini_cell_state = tf.zeros(shape=[self.sample_size, lstm_dims])
+        self.ini_hidden_state = tf.zeros(shape=[self.sample_size, lstm_dims])
 
-        self.__num_vec = None
+        self.bias = tf.zeros(shape=[lstm_dims * 4])
+        self.lstm_dims = lstm_dims
+
+    def build(self, input_shape):
+        self.input_size = input_shape[0].dims[2]
+        values = self.initializer(shape=[self.input_size + self.lstm_dims , self.lstm_dims * 4])
+        self.weight_matrix = tf.Variable(values)
+
+        values = self.initializer(shape=[self.lstm_dims])
+        self.weight_input_gate = tf.Variable(values)
+        self.weight_forget_gate = tf.Variable(values)
+        self.weight_output_gate = tf.Variable(values)
 
     def call(self, inputs):
-        # Forward pass
-        # TODO: Raise error when inputs[0].shape.dims != inputs[1].shape.dims
-        self.__num_vec = inputs[0].shape.dims[1]
+        time_steps = inputs[0].shape.dims[1]
 
-        vec_for = inputs[0]
-        vec_back = inputs[1]
-        hid_for_1, hid_back_1 = [init_hidden(self.lstm_dims) for _ in range(2)]
+        vec_for = tf.reshape(inputs[0], shape=[time_steps, self.sample_size, self.input_size])
+        vec_back = tf.reshape(inputs[1], shape=[time_steps, self.sample_size, self.input_size])
 
-        res_for_1, hid_for_1 = self.get_lstm_output(self.lstm_for_1, vec_for, hid_for_1)
-        res_back_1, hid_back_1 = self.get_lstm_output(self.lstm_back_1, vec_back, hid_back_1)
+        block_lstm_for_1 = self.get_lstm_output(vec_for, time_steps)
+        block_lstm_back_1 = self.get_lstm_output(vec_back, time_steps)
 
-        vec_cat = concatenate_layers(res_for_1[0], res_back_1[0], self.__num_vec)
+        res_for_1 = tf.reshape(block_lstm_for_1.h, shape=[self.sample_size, time_steps, self.lstm_dims])
+        res_back_1 = tf.reshape(block_lstm_back_1.h, shape=[self.sample_size, time_steps, self.lstm_dims])
 
-        vec_for_2 = tf.reshape(tf.concat(vec_cat, 0), shape=(self.sample_size, self.__num_vec, -1))
-        vec_back_2 = tf.reshape(tf.concat(list(reversed(vec_cat)), 0), shape=(self.sample_size, self.__num_vec, -1))
+        vec_cat = concatenate_layers(res_for_1[0], res_back_1[0], time_steps)
+        vec_for_2 = tf.reshape(tf.concat(vec_cat, 0), shape=(self.sample_size, time_steps, -1))
+        vec_back_2 = tf.reshape(tf.concat(list(reversed(vec_cat)), 0), shape=(self.sample_size, time_steps, -1))
 
         return [vec_for_2, vec_back_2]
 
-    @staticmethod
-    def get_lstm_output(lstm_model, input_sequence, initial_state):
-        output = lstm_model(input_sequence, initial_state=initial_state)
-        hidden_states, hidden_state, cell_state = output[0], output[1], output[2]
-        return hidden_states, (hidden_state, cell_state)
+    def get_lstm_output(self, input_sequence, time_steps):
+        block_lstm = tf.raw_ops.BlockLSTM(seq_len_max=time_steps, x=input_sequence, cs_prev=self.ini_cell_state,
+                                          h_prev=self.ini_hidden_state, w=self.weight_matrix,
+                                          wci=self.weight_input_gate, wcf=self.weight_forget_gate,
+                                          wco=self.weight_output_gate, b=self.bias)
+        return block_lstm
 
 
-class NextBiLSTMModule(tf.keras.layers.Layer):
+class NextBlockLSTM(tf.keras.layers.Layer):
 
     def __init__(self, lstm_dims):
-        super().__init__(name="NextBiLSTMModule")
-        # Input data
+        super().__init__(name="NextBlockLSTM")
+        self.initializer = tf.keras.initializers.GlorotUniform()  # Xavier uniform
+        self.sample_size = 1
+        self.ini_cell_state = tf.zeros(shape=[self.sample_size, lstm_dims])
+        self.ini_hidden_state = tf.zeros(shape=[self.sample_size, lstm_dims])
+
+        self.bias = tf.zeros(shape=[lstm_dims * 4])
         self.lstm_dims = lstm_dims
-        self.lstm_for_2 = LSTM(lstm_dims, return_sequences=True, return_state=True)
-        self.lstm_back_2 = LSTM(lstm_dims, return_sequences=True, return_state=True)
+
+    def build(self, input_shape):
+        self.input_size = input_shape[0].dims[2]
+        values = self.initializer(shape=[self.input_size + self.lstm_dims, self.lstm_dims * 4])
+        self.weight_matrix = tf.Variable(values)
+
+        values = self.initializer(shape=[self.lstm_dims])
+        self.weight_input_gate = tf.Variable(values)
+        self.weight_forget_gate = tf.Variable(values)
+        self.weight_output_gate = tf.Variable(values)
 
     def call(self, inputs):
         # Forward pass
-        vec_for_2 = inputs[0]
-        vec_back_2 = inputs[1]
-        hid_for_2, hid_back_2 = [init_hidden(self.lstm_dims) for _ in range(2)]
-        res_for_2, hid_for_2 = self.get_lstm_output(self.lstm_for_2, vec_for_2, hid_for_2)
-        res_back_2, hid_back_2 = self.get_lstm_output(self.lstm_back_2, vec_back_2, hid_back_2)
+        time_steps = inputs[0].shape.dims[1]
+
+        vec_for_2 = tf.reshape(inputs[0], shape=[time_steps, self.sample_size, self.input_size])
+        vec_back_2 = tf.reshape(inputs[1], shape=[time_steps, self.sample_size, self.input_size])
+
+        block_lstm_for_2 = self.get_lstm_output(vec_for_2, time_steps)
+        block_lstm_back_2 = self.get_lstm_output(vec_back_2, time_steps)
+
+        res_for_2 = tf.reshape(block_lstm_for_2.h, shape=[self.sample_size, time_steps, self.lstm_dims])
+        res_back_2 = tf.reshape(block_lstm_back_2.h, shape=[self.sample_size, time_steps, self.lstm_dims])
 
         return [res_for_2, res_back_2]
 
-    @staticmethod
-    def get_lstm_output(lstm_model, input_sequence, initial_state):
-        output = lstm_model(input_sequence, initial_state=initial_state)
-        hidden_states, hidden_state, cell_state = output[0], output[1], output[2]
-        return hidden_states, (hidden_state, cell_state)
+    def get_lstm_output(self, input_sequence, time_steps):
+        block_lstm = tf.raw_ops.BlockLSTM(seq_len_max=time_steps, x=input_sequence, cs_prev=self.ini_cell_state,
+                                          h_prev=self.ini_hidden_state, w=self.weight_matrix,
+                                          wci=self.weight_input_gate, wcf=self.weight_forget_gate,
+                                          wco=self.weight_output_gate, b=self.bias)
+        return block_lstm
 
 
 class BiLSTMModule(tf.keras.layers.Layer):
 
     def __init__(self, lstm_dims):
         super().__init__(name="BiLSTMModule")
-        self.biLstm1 = FirstBiLSTMModule(lstm_dims)
-        self.biLstm2 = NextBiLSTMModule(lstm_dims)
+        self.blockLstm = FirstBlockLSTMModule(lstm_dims)
+        self.nextBlockLstm = NextBlockLSTM(lstm_dims)
         self.__sentence = None
 
     def set_sentence(self, sentence):
         self.__sentence = sentence
 
     def call(self, inputs):
-        # Forward pass
-        bi_lstm1_output = self.biLstm1(inputs)
-        bi_lstm2_output = self.biLstm2(bi_lstm1_output)
-        return bi_lstm2_output
+
+        block_lstm1_output = self.blockLstm(inputs)
+        block_lstm2_output = self.nextBlockLstm(block_lstm1_output)
+        return block_lstm2_output
 
 
 class ConcatHeadModule(tf.keras.layers.Layer):

@@ -14,19 +14,19 @@ if __name__ == '__main__':
     parser.add_option("--outdir", type="string", dest="output", default="/model-tiny-tf")
 
     parser.add_option("--train", dest="conll_train", help="Annotated CONLL train file", metavar="FILE",
-                      default="/corpus/en-tiny-ud-train.conllu")
+                      default="/corpus/en-small-ud-train.conllu")
 
     # multi-task has been deleted for bloated code
 
     parser.add_option("--wembedding", type="int", dest="wembedding_dims", default=100)
 
-    parser.add_option("--epochs", type="int", dest="epochs", default=3)
+    parser.add_option("--epochs", type="int", dest="epochs", default=7)
     parser.add_option("--hidden", type="int", dest="hidden_units", default=100)
     parser.add_option("--hidden2", type="int", dest="hidden2_units", default=0)
     parser.add_option("--optim", type="string", dest="optim", default='adam')
     parser.add_option("--lr", type="float", dest="lr", default=1e-3)
     parser.add_option("--activation", type="string", dest="activation", default="tanh")
-    parser.add_option("--lstmdims", type="int", dest="lstm_dims", default=125)
+    parser.add_option("--lstmdims", type="int", dest="lstm_dims", default=126)
 
     parser.add_option("--model", dest="model", help="Load/Save model file", metavar="FILE",
                       default="neuralfirstorder.model")
@@ -62,6 +62,6 @@ if __name__ == '__main__':
         print('Starting epoch', epoch)
         parser.train(train_file)
 
-        print('Saving model...')
-        base_name = output_path + '/' + model_name
-        parser.save(os.path.join(output_path, os.path.basename(base_name) + str(epoch + 1)))
+        # print('Saving model...')
+        # base_name = output_path + '/' + model_name
+        # parser.save(os.path.join(output_path, os.path.basename(base_name) + str(epoch + 1)))
