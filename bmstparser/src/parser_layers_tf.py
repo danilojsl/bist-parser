@@ -222,7 +222,7 @@ class ConcatRelationModule(tf.keras.layers.Layer):
             self.rhid2Bias = utils_tf.Parameter(hidden2_units, 'rhid2Bias')
 
         self.routLayer = utils_tf.Parameter((hidden2_units if hidden2_units > 0 else hidden_units, relations_size),
-                                   'routLayer')
+                                            'routLayer')
         self.routBias = utils_tf.Parameter(relations_size, 'routBias')
 
         self.__sentence = None

@@ -17,6 +17,10 @@ def train_parser(bi_lstm_input):
     # Begins Graph Session
     tf.compat.v1.disable_eager_execution()
 
+    initializer_gm = tf.keras.initializers.GlorotUniform()  # Xavier uniform
+    values_gm = initializer_gm(shape=[input_size + lstm_dims, lstm_dims * 4])
+    weight_matrix_gm = tf.Variable(values_gm, name='w_first_lstm')
+
     bi_lstm_input_ph = tf.compat.v1.placeholder(tf.float32, shape=None)
     weight_matrix_ph = tf.compat.v1.placeholder(tf.float32, shape=None)
     y_true_ph = tf.compat.v1.placeholder(tf.float32, shape=None)
@@ -24,41 +28,55 @@ def train_parser(bi_lstm_input):
 
     loss = lambda: tf.reduce_sum(tf.concat([y_true_ph, y_pred_ph], 0))
 
+    y_true_gm = tf.Variable(tf.compat.v1.random_normal([1, 2]))
+    y_pred_gm = tf.Variable(tf.compat.v1.random_normal([1, 2]))
+    cost = tf.reduce_sum(tf.concat([y_true_gm, y_pred_gm], 0)) + weight_matrix_gm
+    gradients_weight = tf.gradients(cost, weight_matrix_gm)
+
+    init = tf.compat.v1.global_variables_initializer()
+    # Start from Concat Layers
     with tf.compat.v1.Session() as session:
-        optimizer = tf.keras.optimizers.Adam(learning_rate=0.001, epsilon=1e-8)
-
-        output = session.run(fetches={'bi_lstm_input': bi_lstm_input_ph,
-                                      'weight_matrix': weight_matrix_ph},
-                             feed_dict={bi_lstm_input_ph: bi_lstm_input,
-                                        weight_matrix_ph: weight_matrix_np,
-                                        y_true_ph: y_true_np,
-                                        y_pred_ph: y_pred_np})
-
-        bi_lstm_input = output['bi_lstm_input']
-        print(bi_lstm_input.shape)
-        ini_cell_state = tf.zeros(shape=[sample_size, lstm_dims], name='c_first_lstm')
-        ini_hidden_state = tf.zeros(shape=[sample_size, lstm_dims], name='h_first_lstm')
-        bias = tf.zeros(shape=[lstm_dims * 4], name='b_first_lstm')
-
-        weight_matrix = tf.Variable(tf.convert_to_tensor(output['weight_matrix']), name='w_first_lstm')
-
-        initializer = tf.keras.initializers.GlorotUniform()  # Xavier uniform
-
-        values = initializer(shape=[lstm_dims])
-        weight_input_gate = tf.Variable(values, name='wig_first_lstm')
-        weight_forget_gate = tf.Variable(values, name='wfg_first_lstm')
-        weight_output_gate = tf.Variable(values, name='wog_first_lstm')
-
-        vec_for = bi_lstm_input[0]
-
-        block_lstm = tf.raw_ops.BlockLSTM(seq_len_max=time_steps, x=vec_for, cs_prev=ini_cell_state,
-                                          h_prev=ini_hidden_state, w=weight_matrix,
-                                          wci=weight_input_gate, wcf=weight_forget_gate,
-                                          wco=weight_output_gate, b=bias)
-
-        optimizer.minimize(loss=loss, var_list=weight_matrix)
-        print("after minimize")
-        print(weight_matrix)
+        session.run(init)
+        grad_value = session.run(gradients_weight)
+        print(grad_value)
+        # optimizer = tf.keras.optimizers.Adam(learning_rate=0.001, epsilon=1e-8)
+        #
+        # output = session.run(fetches={'bi_lstm_input': bi_lstm_input_ph,
+        #                               'weight_matrix': weight_matrix_ph,
+        #                               'gradient': gradients_weight},
+        #                      feed_dict={bi_lstm_input_ph: bi_lstm_input,
+        #                                 weight_matrix_ph: weight_matrix_np,
+        #                                 y_true_ph: y_true_np,
+        #                                 y_pred_ph: y_pred_np})
+        #
+        # gradient = output['bi_lstm_input']
+        # print(gradient)
+        #
+        # bi_lstm_input = output['bi_lstm_input']
+        # print(bi_lstm_input.shape)
+        # ini_cell_state = tf.zeros(shape=[sample_size, lstm_dims], name='c_first_lstm')
+        # ini_hidden_state = tf.zeros(shape=[sample_size, lstm_dims], name='h_first_lstm')
+        # bias = tf.zeros(shape=[lstm_dims * 4], name='b_first_lstm')
+        #
+        # weight_matrix = tf.Variable(tf.convert_to_tensor(output['weight_matrix']), name='w_first_lstm')
+        #
+        # initializer = tf.keras.initializers.GlorotUniform()  # Xavier uniform
+        #
+        # values = initializer(shape=[lstm_dims])
+        # weight_input_gate = tf.Variable(values, name='wig_first_lstm')
+        # weight_forget_gate = tf.Variable(values, name='wfg_first_lstm')
+        # weight_output_gate = tf.Variable(values, name='wog_first_lstm')
+        #
+        # vec_for = bi_lstm_input[0]
+        #
+        # block_lstm = tf.raw_ops.BlockLSTM(seq_len_max=time_steps, x=vec_for, cs_prev=ini_cell_state,
+        #                                   h_prev=ini_hidden_state, w=weight_matrix,
+        #                                   wci=weight_input_gate, wcf=weight_forget_gate,
+        #                                   wco=weight_output_gate, b=bias)
+        #
+        # optimizer.minimize(loss=loss, var_list=weight_matrix)
+        # print("after minimize")
+        # print(weight_matrix)
 
 
 if __name__ == '__main__':

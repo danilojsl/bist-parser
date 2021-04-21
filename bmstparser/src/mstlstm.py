@@ -203,7 +203,7 @@ class MSTParserLSTMModel(nn.Module):
             sentence[i].lstms[0] = res_for_2[i]
             sentence[i].lstms[1] = res_back_2[num_vec - i - 1]
 
-        scores, exprs = self.__evaluate(sentence, True)
+        scores, exprs = self.__evaluate(sentence)
         heads = decoder.parse_proj(scores)
 
         for entry, head in zip(sentence, heads):
