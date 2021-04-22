@@ -177,7 +177,6 @@ class ConcatHeadModule(tf.keras.layers.Layer):
             lstms_1 = inputs[index][1]
             concatenated_lstm = tf.reshape(utils_tf.concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
             headfov = tf.matmul(concatenated_lstm, self.hidLayerFOH)
-            concatenated_lstm = tf.reshape(utils_tf.concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
             modfov = tf.matmul(concatenated_lstm, self.hidLayerFOM)
             head_vector.append([headfov, modfov])
 
@@ -232,9 +231,10 @@ class ConcatRelationModule(tf.keras.layers.Layer):
 
     def call(self, inputs, training):
         # Forwad pass
+        # TODO: Add gold to the inputs
         rscores_list = []
         if self.__sentence is None:
-            return rscores_list
+            return rscores_list  # TODO: Remove sentence dependency to save relations variables on model
         gold = [entry.parent_id for entry in self.__sentence]
         for modifier, head in enumerate(gold[1:]):
             lstms_0 = inputs[head][0]

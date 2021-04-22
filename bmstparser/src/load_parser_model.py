@@ -51,7 +51,7 @@ def get_bi_lstm_output():
     res_back_1 = tf.reshape(block_lstm_back_1.h, shape=res_shape)
 
     vec_shape = [time_steps, sample_size, input_size_next_lstm]
-    vec_cat = concatenate_layers(res_for_1[0], res_back_1[0], time_steps)
+    vec_cat = utils_tf.concatenate_layers(res_for_1[0], res_back_1[0], time_steps)
     vec_for_2 = tf.reshape(tf.concat(vec_cat, 0), shape=vec_shape)
     vec_back_2 = tf.reshape(tf.concat(list(reversed(vec_cat)), 0), shape=vec_shape)
 
@@ -61,13 +61,6 @@ def get_bi_lstm_output():
     res_back_2 = tf.reshape(block_lstm_back_2.h, shape=res_shape)
 
     return [res_for_2, res_back_2]
-
-
-def concatenate_layers(array1, array2, num_vec):
-    concat_size = array1.shape[1] + array2.shape[1]
-    concat_result = [tf.reshape(tf.concat([array1[i], array2[num_vec - i - 1]], 0), shape=(1, concat_size))
-                     for i in range(num_vec)]
-    return concat_result
 
 
 def evaluate(sentence_lstms):
@@ -102,34 +95,23 @@ def getExpr(head_vector, i, j):
 
 if __name__ == '__main__':
 
-    test_file = "/home/dburbano/IdeaProjects/JSL/bist-parser-tensorflow/corpus/en-tiny-ud-train.conllu"
-    # Prediction
-    print(f'Testing with file {test_file}')
-    # Added to run from IntelliJ
-    print('Preparing vocabulary table')
-    words, enum_word, pos, rels, onto, cpos = list(utils.vocab(test_file))
-    # TODO: Check if pickle serialization is required
-    print('Finished collecting vocabulary')
+    model_path = "/home/dburbano/IdeaProjects/JSL/bist-parser-tensorflow/model-tf/neuralfirstorder.model7"
+    loaded = tf.saved_model.load(model_path)
+    infer = loaded.signatures["serving_default"]
 
-    model_path = "/home/dburbano/IdeaProjects/JSL/bist-parser-tensorflow/model-tiny-tf/neuralfirstorder.model3"
-    # loaded = tf.saved_model.load(model_path)
-    # tf.keras.models.save_model
-    loaded_keras = tf.keras.models.load_model(model_path)
-    # embeddings_module = loaded.embeddings
-    # print(list(loaded_keras.signatures.keys()))
-    infer = loaded_keras.signatures["serving_default"]
-    # print(infer.structured_outputs)
-
+    # Hardcoded parameters
     sample_size = 1
-    # LSTM Layers
     lstm_dims = 126
+    embeddings_dims = 100
+    input_size_next_lstm = 252
+
+    # LSTM Layers
     w_first_lstm = tf.Variable(infer.trainable_variables[0])
     wig_first_lstm = tf.Variable(infer.trainable_variables[1])
     wfg_first_lstm = tf.Variable(infer.trainable_variables[2])
     wog_first_lstm = tf.Variable(infer.trainable_variables[3])
     weights_first_lstm = [w_first_lstm, wig_first_lstm, wfg_first_lstm, wog_first_lstm]
 
-    input_size_next_lstm = 252
     w_next_lstm = tf.Variable(infer.trainable_variables[4])
     wig_next_lstm = tf.Variable(infer.trainable_variables[5])
     wfg_next_lstm = tf.Variable(infer.trainable_variables[6])
@@ -143,8 +125,15 @@ if __name__ == '__main__':
     out_layer = infer.trainable_variables[11]
     out_bias = infer.trainable_variables[12]
 
+    test_file = "/home/dburbano/IdeaProjects/JSL/bist-parser-tensorflow/corpus/en-tiny-ud-train.conllu"
+    # Prediction
+    print(f'Testing with file {test_file}')
+    # Added to run from IntelliJ
+    print('Preparing vocabulary table')
+    words, enum_word, pos, rels, onto, cpos = list(utils.vocab(test_file))
+    print('Finished collecting vocabulary')
+
     vocab_size = len(words) + 3
-    embeddings_dims = 100
     w_lookup = Embedding(vocab_size, embeddings_dims, name='embedding_vocab',
                          embeddings_initializer=tf.keras.initializers.random_normal(mean=0.0, stddev=1.0))
 
@@ -173,8 +162,5 @@ if __name__ == '__main__':
             predicted_heads = decoder_tf.parse_proj(predicted_scores)
 
             print(predicted_heads)
-            # for entry, head in zip(sentence, heads):
-            #     entry.pred_parent_id = head
-            #     entry.pred_relation = '_'
 
 

@@ -11,16 +11,16 @@ import mstlstm_tf
 if __name__ == '__main__':
     parser = OptionParser()
 
-    parser.add_option("--outdir", type="string", dest="output", default="/model-tiny-tf")
+    parser.add_option("--outdir", type="string", dest="output", default="/model-tf")
 
     parser.add_option("--train", dest="conll_train", help="Annotated CONLL train file", metavar="FILE",
-                      default="/corpus/en-tiny-ud-train.conllu")
+                      default="/corpus/en-small-ud-train.conllu")
 
     # multi-task has been deleted for bloated code
 
     parser.add_option("--wembedding", type="int", dest="wembedding_dims", default=100)
 
-    parser.add_option("--epochs", type="int", dest="epochs", default=3)
+    parser.add_option("--epochs", type="int", dest="epochs", default=7)
     parser.add_option("--hidden", type="int", dest="hidden_units", default=100)
     parser.add_option("--hidden2", type="int", dest="hidden2_units", default=0)
     parser.add_option("--optim", type="string", dest="optim", default='adam')

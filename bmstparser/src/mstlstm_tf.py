@@ -123,6 +123,7 @@ class MSTParserLSTM:
 
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
 
+                gold_v2 = []
                 for entry in conll_sentence:
                     embeddings_input = self.get_embeddings_input(entry)
                     word_vec = self.embeddings(embeddings_input)
@@ -133,6 +134,7 @@ class MSTParserLSTM:
 
                     entry.rheadfov = None
                     entry.rmodfov = None
+                    gold_v2.append(entry.parent_id)
 
                 bi_lstm_input = self.get_bi_lstm_input(conll_sentence)
 
@@ -212,6 +214,5 @@ class MSTParserLSTM:
 
     def save(self, fn):
         tmp = fn + '.tmp'
-        tf.keras.models.save_model(self.model, tmp)
-        # tf.saved_model.save(self.model, tmp)
+        tf.saved_model.save(self.model, tmp)
         shutil.move(tmp, fn)
