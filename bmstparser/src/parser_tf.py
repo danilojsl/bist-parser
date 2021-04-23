@@ -11,7 +11,7 @@ import mstlstm_tf
 if __name__ == '__main__':
     parser = OptionParser()
 
-    parser.add_option("--outdir", type="string", dest="output", default="/model-tf")
+    parser.add_option("--outdir", type="string", dest="output", default="/model-small-tf")
 
     parser.add_option("--train", dest="conll_train", help="Annotated CONLL train file", metavar="FILE",
                       default="/corpus/en-small-ud-train.conllu")
@@ -29,7 +29,7 @@ if __name__ == '__main__':
     parser.add_option("--lstmdims", type="int", dest="lstm_dims", default=126)
 
     parser.add_option("--model", dest="model", help="Load/Save model file", metavar="FILE",
-                      default="neuralfirstorder.model")
+                      default="dp-parser.model")
 
     (options, args) = parser.parse_args()
 
@@ -64,4 +64,4 @@ if __name__ == '__main__':
 
         print('Saving model...')
         base_name = output_path + '/' + model_name
-        parser.save(os.path.join(output_path, os.path.basename(base_name) + str(epoch + 1)))
+        parser.save(base_name, str(epoch + 1))

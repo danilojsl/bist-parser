@@ -24,13 +24,8 @@ class BiLSTMModule(tf.keras.layers.Layer):
         super().__init__(name="BiLSTMModule")
         self.blockLstm = FirstBlockLSTMModule(lstm_dims)
         self.nextBlockLstm = NextBlockLSTM(lstm_dims)
-        self.__sentence = None
-
-    def set_sentence(self, sentence):
-        self.__sentence = sentence
 
     def call(self, inputs):
-
         block_lstm1_output = self.blockLstm(inputs)
         block_lstm2_output = self.nextBlockLstm(block_lstm1_output)
         return block_lstm2_output
@@ -136,7 +131,7 @@ class NextBlockLSTM(tf.keras.layers.Layer):
         return block_lstm
 
 
-class ConcatHeadModule(tf.keras.layers.Layer):
+class ConcatHeadModule(tf.keras.Model):
 
     def __init__(self, ldims, hidden_units, hidden2_units, activation):
         super().__init__("ConcatHeadModule")
@@ -155,11 +150,6 @@ class ConcatHeadModule(tf.keras.layers.Layer):
         self.outLayer = utils_tf.Parameter((hidden2_units if hidden2_units > 0 else hidden_units, 1), 'outLayer')
         self.outBias = utils_tf.Parameter(1, 'outBias')
 
-        self.__sentence = None
-
-    def set_sentence(self, sentence):
-        self.__sentence = sentence
-
     def call(self, inputs):
         # Forward pass
         scores, exprs = self.__evaluate(inputs)
@@ -171,7 +161,7 @@ class ConcatHeadModule(tf.keras.layers.Layer):
         def transform_tensor(tensor_list):
             return list(map(lambda tensor: tensor[0, 0], tensor_list))
 
-        head_vector = []  # TODO: Check if this array must be a Tensor variable to save it in the model
+        head_vector = []
         for index in range(len(inputs)):
             lstms_0 = inputs[index][0]
             lstms_1 = inputs[index][1]
@@ -183,7 +173,6 @@ class ConcatHeadModule(tf.keras.layers.Layer):
         exprs = [[self.__getExpr(head_vector, i, j) for j in range(len(head_vector))] for i in range(len(head_vector))]
 
         output_tensor = [[output for output in exprsRow] for exprsRow in exprs]
-        # scores = np.array([convert_to_numpy(output) for output in output_tensor])
         scores = tf.stack([transform_tensor(output) for output in output_tensor])
 
         return scores, exprs
@@ -204,7 +193,7 @@ class ConcatHeadModule(tf.keras.layers.Layer):
         return output
 
 
-class ConcatRelationModule(tf.keras.layers.Layer):
+class ConcatRelationModule(tf.keras.Model):
 
     def __init__(self, relations_size, ldims, hidden_units, hidden2_units, activation):
         super().__init__(name="ConcatRelationModule")
@@ -224,31 +213,13 @@ class ConcatRelationModule(tf.keras.layers.Layer):
                                             'routLayer')
         self.routBias = utils_tf.Parameter(relations_size, 'routBias')
 
-        self.__sentence = None
-
-    def set_sentence(self, sentence):
-        self.__sentence = sentence
-
     def call(self, inputs, training):
         # Forwad pass
-        # TODO: Add gold to the inputs
         rscores_list = []
-        if self.__sentence is None:
-            return rscores_list  # TODO: Remove sentence dependency to save relations variables on model
-        gold = [entry.parent_id for entry in self.__sentence]
-        for modifier, head in enumerate(gold[1:]):
-            lstms_0 = inputs[head][0]
-            lstms_1 = inputs[modifier + 1][1]
-
-            if self.__sentence[head].rheadfov is None:
-                concatenated_lstm = tf.reshape(utils_tf.concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
-                self.__sentence[head].rheadfov = tf.matmul(concatenated_lstm, self.rhidLayerFOH)
-
-            if self.__sentence[modifier + 1].modfov is None:
-                concatenated_lstm = tf.reshape(utils_tf.concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
-                self.__sentence[modifier + 1].modfov = tf.matmul(concatenated_lstm, self.rhidLayerFOM)
-
-            rscores = self.__evaluateLabel(self.__sentence[head].rheadfov, self.__sentence[modifier + 1].modfov)
+        for concatenated_lstm in inputs:
+            relation_head_fov = tf.matmul(concatenated_lstm, self.rhidLayerFOH)
+            relation_mod_fov = tf.matmul(concatenated_lstm, self.rhidLayerFOM)
+            rscores = self.__evaluateLabel(relation_head_fov, relation_mod_fov)
             rscores_list.append(rscores)
 
         return rscores_list

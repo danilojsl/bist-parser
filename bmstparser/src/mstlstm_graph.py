@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 
 import utils
-from parser_layers_tf import EmbeddingsModule
+from parser_modules_tf import EmbeddingsModule
 from utils import read_conll
 
 

@@ -95,9 +95,13 @@ def getExpr(head_vector, i, j):
 
 if __name__ == '__main__':
 
-    model_path = "/home/dburbano/IdeaProjects/JSL/bist-parser-tensorflow/model-tf/neuralfirstorder.model7"
-    loaded = tf.saved_model.load(model_path)
-    infer = loaded.signatures["serving_default"]
+    model_path = "/home/dburbano/IdeaProjects/JSL/bist-parser-tensorflow/model-tiny-tf/dp-parser.model3/"
+    loaded_bi_lstm = tf.saved_model.load(model_path + "BiLSTM")
+    infer_bi_lstm = loaded_bi_lstm.signatures["serving_default"]
+    loaded_heads = tf.saved_model.load(model_path + "Heads")
+    infer_heads = loaded_heads.signatures["serving_default"]
+    loaded_relations = tf.saved_model.load(model_path + "Relations")
+    infer_relations = loaded_relations.signatures["serving_default"]
 
     # Hardcoded parameters
     sample_size = 1
@@ -106,24 +110,31 @@ if __name__ == '__main__':
     input_size_next_lstm = 252
 
     # LSTM Layers
-    w_first_lstm = tf.Variable(infer.trainable_variables[0])
-    wig_first_lstm = tf.Variable(infer.trainable_variables[1])
-    wfg_first_lstm = tf.Variable(infer.trainable_variables[2])
-    wog_first_lstm = tf.Variable(infer.trainable_variables[3])
+    w_first_lstm = tf.Variable(infer_bi_lstm.trainable_variables[0])
+    wig_first_lstm = tf.Variable(infer_bi_lstm.trainable_variables[1])
+    wfg_first_lstm = tf.Variable(infer_bi_lstm.trainable_variables[2])
+    wog_first_lstm = tf.Variable(infer_bi_lstm.trainable_variables[3])
     weights_first_lstm = [w_first_lstm, wig_first_lstm, wfg_first_lstm, wog_first_lstm]
 
-    w_next_lstm = tf.Variable(infer.trainable_variables[4])
-    wig_next_lstm = tf.Variable(infer.trainable_variables[5])
-    wfg_next_lstm = tf.Variable(infer.trainable_variables[6])
-    wog_next_lstm = tf.Variable(infer.trainable_variables[7])
+    w_next_lstm = tf.Variable(infer_bi_lstm.trainable_variables[4])
+    wig_next_lstm = tf.Variable(infer_bi_lstm.trainable_variables[5])
+    wfg_next_lstm = tf.Variable(infer_bi_lstm.trainable_variables[6])
+    wog_next_lstm = tf.Variable(infer_bi_lstm.trainable_variables[7])
     weights_next_lstm = [w_next_lstm, wig_next_lstm, wfg_next_lstm, wog_next_lstm]
 
-    # Concat Layers
-    hid_layer_foh = infer.trainable_variables[8]
-    hid_layer_fom = infer.trainable_variables[9]
-    hid_bias = infer.trainable_variables[10]
-    out_layer = infer.trainable_variables[11]
-    out_bias = infer.trainable_variables[12]
+    # Heads Layer
+    hid_layer_foh = infer_heads.trainable_variables[0]
+    hid_layer_fom = infer_heads.trainable_variables[1]
+    hid_bias = infer_heads.trainable_variables[2]
+    out_layer = infer_heads.trainable_variables[3]
+    out_bias = infer_heads.trainable_variables[4]
+
+    # Relations Layer
+    r_hid_layer_foh = infer_relations.trainable_variables[0]
+    r_hid_layer_fom = infer_relations.trainable_variables[1]
+    r_hid_bias = infer_relations.trainable_variables[2]
+    r_out_layer = infer_relations.trainable_variables[3]
+    r_out_bias = infer_relations.trainable_variables[4]
 
     test_file = "/home/dburbano/IdeaProjects/JSL/bist-parser-tensorflow/corpus/en-tiny-ud-train.conllu"
     # Prediction

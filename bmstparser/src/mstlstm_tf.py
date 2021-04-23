@@ -1,5 +1,4 @@
 import random
-import shutil
 import time
 from operator import itemgetter
 
@@ -10,10 +9,11 @@ import tensorflow.keras.activations as F
 import decoder_tf
 import utils
 import utils_tf
-from parser_layers_tf import BiLSTMModule
-from parser_layers_tf import ConcatHeadModule
-from parser_layers_tf import ConcatRelationModule
-from parser_layers_tf import EmbeddingsModule
+from parser_modules_tf import ConcatHeadModule
+from parser_modules_tf import ConcatRelationModule
+from parser_modules_tf import EmbeddingsModule
+from parser_modules_tf import FirstBlockLSTMModule
+from parser_modules_tf import NextBlockLSTM
 from utils import read_conll
 
 
@@ -28,64 +28,36 @@ def get_optim(opt):
         return tf.keras.optimizers.Adam(learning_rate=opt.lr, epsilon=1e-8)
 
 
-class MSTParserLSTMModel(tf.keras.Model):
+class BiLSTMModel(tf.keras.Model):
 
-    def __init__(self, relations_size, options):
+    def __init__(self, lstm_dims):
         super().__init__()
-        random.seed(1)  # TODO: Check if this seed is useful
-        # Activation Functions for Concatenation Modules MLP
-        self.activations = {'tanh': F.tanh, 'sigmoid': F.sigmoid, 'relu': F.relu}
-        self.activation = self.activations[options.activation]
-
-        # LSTM Network Layers
-        self.ldims = options.lstm_dims
-        self.biLstms = BiLSTMModule(self.ldims)
-
-        # Concatenation Layers
-        self.concatHeads = ConcatHeadModule(self.ldims, options.hidden_units, options.hidden2_units, self.activation)
-        self.concatRelations = ConcatRelationModule(relations_size, self.ldims, options.hidden_units,
-                                                    options.hidden2_units, self.activation)
-
-        self.__sentence = None
-
-    def set_sentence(self, sentence):
-        self.__sentence = sentence
+        self.ldims = lstm_dims
+        self.blockLstm = FirstBlockLSTMModule(lstm_dims)
+        self.nextBlockLstm = NextBlockLSTM(lstm_dims)
 
     def call(self, inputs):
         # Forward pass
         # TODO: Raise error when inputs[0].shape.dims != inputs[1].shape.dims
-        num_vec = inputs[0].shape.dims[1]
-        self.biLstms.set_sentence(self.__sentence)
+        block_lstm1_output = self.blockLstm(inputs)
+        block_lstm2_output = self.nextBlockLstm(block_lstm1_output)
 
-        bi_lstms_output = self.biLstms(inputs)
+        time_steps = inputs[0].shape.dims[1]
+        res_for_2 = tf.reshape(block_lstm2_output[0], shape=(time_steps, self.ldims))
+        res_back_2 = tf.reshape(block_lstm2_output[1], shape=(time_steps, self.ldims))
 
-        res_for_2 = tf.reshape(bi_lstms_output[0], shape=(num_vec, self.ldims))
-        res_back_2 = tf.reshape(bi_lstms_output[1], shape=(num_vec, self.ldims))
-
-        concat_input = []
-        for i in range(num_vec):
+        output = []
+        for i in range(time_steps):
             lstms_0 = res_for_2[i]
-            lstms_1 = res_back_2[num_vec - i - 1]
-            concat_input.append([lstms_0, lstms_1])
+            lstms_1 = res_back_2[time_steps - i - 1]
+            output.append([lstms_0, lstms_1])
 
-        self.concatHeads.set_sentence(self.__sentence)
-        heads_output = self.concatHeads(concat_input)
-
-        self.concatRelations.set_sentence(self.__sentence)
-        relations_output = self.concatRelations(concat_input)
-
-        self.concatHeads.set_sentence(None)
-        self.concatRelations.set_sentence(None)
-        return [heads_output, relations_output]
+        return output
 
 
 class MSTParserLSTM:
 
     def __init__(self, vocab, rels, enum_word, options):
-        self.rels = {word: ind for ind, word in enumerate(rels)}
-        self.rel_list = rels
-
-        self.model = MSTParserLSTMModel(len(self.rel_list), options)
         self.trainer = get_optim(options)
 
         # Embeddings Layers
@@ -94,6 +66,18 @@ class MSTParserLSTM:
         self.vocab = {word: ind + 3 for word, ind in enum_word.items()}
         self.vocab['*PAD*'] = 1
         self.vocab['*INITIAL*'] = 2
+
+        # BiLSTM Module
+        self.biLSTMModel = BiLSTMModel(options.lstm_dims)
+
+        # Concatenation Layers
+        self.activations = {'tanh': F.tanh, 'sigmoid': F.sigmoid, 'relu': F.relu}
+        self.activation = self.activations[options.activation]
+        self.rels = {word: ind for ind, word in enumerate(rels)}
+        self.concatHeads = ConcatHeadModule(options.lstm_dims, options.hidden_units, options.hidden2_units,
+                                            self.activation)
+        self.concatRelations = ConcatRelationModule(len(self.rels), options.lstm_dims, options.hidden_units,
+                                                    options.hidden2_units, self.activation)
 
         # Input data
         self.sample_size = 1  # batch size
@@ -123,27 +107,28 @@ class MSTParserLSTM:
 
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
 
-                gold_v2 = []
+                sentence_embeddings = []
+                gold_heads = []
                 for entry in conll_sentence:
                     embeddings_input = self.get_embeddings_input(entry)
                     word_vec = self.embeddings(embeddings_input)
-                    entry.vec = word_vec
-                    entry.lstms = [entry.vec, entry.vec]
-                    entry.headfov = None
-                    entry.modfov = None
+                    sentence_embeddings.append(word_vec)
+                    gold_heads.append(entry.parent_id)
 
-                    entry.rheadfov = None
-                    entry.rmodfov = None
-                    gold_v2.append(entry.parent_id)
-
-                bi_lstm_input = self.get_bi_lstm_input(conll_sentence)
-
+                bi_lstm_input = self.get_bi_lstm_input(sentence_embeddings)
                 with tf.GradientTape() as tape:
 
-                    self.model.set_sentence(conll_sentence)
-                    model_output = self.model(bi_lstm_input)
-                    heads_output = model_output[0]
-                    relations_output = model_output[1]
+                    bi_lstm_output = self.biLSTMModel(bi_lstm_input)
+                    heads_output = self.concatHeads(bi_lstm_output)
+
+                    relations_input = []
+                    for modifier, head in enumerate(gold_heads[1:]):
+                        lstms_0 = bi_lstm_output[head][0]
+                        lstms_1 = bi_lstm_output[modifier + 1][1]
+                        concatenated_lstm = tf.reshape(utils_tf.concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
+                        relations_input.append(concatenated_lstm)
+
+                    relations_output = self.concatRelations(relations_input)
 
                     lerrs = self.get_relation_errors(relations_output, conll_sentence)
                     errs, e_output = self.get_head_errors(conll_sentence, heads_output)
@@ -158,11 +143,13 @@ class MSTParserLSTM:
                             reshaped_lerrs = [tf.reshape(item, [1]) for item in lerrs]
                             eerrs_sum = self.loss_function(errs, reshaped_lerrs)
 
+                trainable_variables = self.biLSTMModel.trainable_variables + \
+                    self.concatHeads.trainable_variables + \
+                    self.concatRelations.trainable_variables
                 if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
                     if len(errs) > 0 or len(lerrs) > 0:
-                        grads = tape.gradient(eerrs_sum, self.model.trainable_variables)
-                        self.trainer.apply_gradients(zip(grads, self.model.trainable_variables))
-                self.model.set_sentence(None)
+                        grads = tape.gradient(eerrs_sum, sources=trainable_variables)
+                        self.trainer.apply_gradients(zip(grads, trainable_variables))
 
         print("Loss: ", mloss / iSentence)
 
@@ -178,12 +165,12 @@ class MSTParserLSTM:
 
         return w_index
 
-    def get_bi_lstm_input(self, sentence):
-        num_vec = len(sentence)
-        features_for = [entry.vec for entry in sentence]
-        features_back = [entry.vec for entry in reversed(sentence)]
-        vec_for = tf.reshape(tf.concat(features_for, 0), shape=(self.sample_size, num_vec, -1))
-        vec_back = tf.reshape(tf.concat(features_back, 0), shape=(self.sample_size, num_vec, -1))
+    def get_bi_lstm_input(self, embeddings):
+        time_steps = len(embeddings)
+        features_for = embeddings
+        features_back = list(reversed(embeddings))
+        vec_for = tf.reshape(tf.concat(features_for, 0), shape=(self.sample_size, time_steps, -1))
+        vec_back = tf.reshape(tf.concat(features_back, 0), shape=(self.sample_size, time_steps, -1))
 
         return [vec_for, vec_back]
 
@@ -212,7 +199,12 @@ class MSTParserLSTM:
 
         return lerrs
 
-    def save(self, fn):
-        tmp = fn + '.tmp'
-        tf.saved_model.save(self.model, tmp)
-        shutil.move(tmp, fn)
+    def save(self, output_path, epoch):
+        main_model_dir = output_path + epoch
+
+        export_dir = main_model_dir + "/BiLSTM"
+        tf.saved_model.save(self.biLSTMModel, export_dir)
+        export_dir = main_model_dir + "/Heads"
+        tf.saved_model.save(self.concatHeads, export_dir)
+        export_dir = main_model_dir + "/Relations"
+        tf.saved_model.save(self.concatRelations, export_dir)
