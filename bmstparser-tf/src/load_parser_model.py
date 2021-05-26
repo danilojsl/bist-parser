@@ -241,4 +241,4 @@ if __name__ == '__main__':
                         entry.pred_relation = relation[2:len(relation)-1]
                 conll_document.append(conll_sentence)
 
-        # compute_accuracy(i)
+        compute_accuracy(i)
