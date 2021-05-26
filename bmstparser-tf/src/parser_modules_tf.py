@@ -3,6 +3,21 @@ from tensorflow.keras.layers import Embedding
 import utils_tf
 
 
+class EmbeddingsLookup:
+
+    def __init__(self, embeddings_size, vocabulary_size, training=True):
+        # TODO: Shape changes between prediction and training
+        if training:
+            self.shape = tf.constant([embeddings_size, vocabulary_size])
+        else:
+            self.shape = tf.constant([vocabulary_size, embeddings_size])
+        self.seed = tf.constant([1, 1], dtype=tf.int64)
+        self.embeddings_table = tf.random.stateless_normal(self.shape, self.seed)
+
+    def lookup(self, inputs):
+        return tf.nn.embedding_lookup(self.embeddings_table, inputs)
+
+
 class EmbeddingsModule(tf.keras.layers.Layer):
 
     def __init__(self, vocab_size, wdims):
@@ -158,11 +173,9 @@ class ConcatHeadModule(tf.keras.Model):
 
     def __evaluate(self, inputs):
 
-        def transform_tensor(tensor_list):
-            return list(map(lambda tensor: tensor[0, 0], tensor_list))
-
+        time_steps = len(inputs)
         head_vector = []
-        for index in range(len(inputs)):
+        for index in range(time_steps):
             lstms_0 = inputs[index][0]
             lstms_1 = inputs[index][1]
             concatenated_lstm = tf.reshape(utils_tf.concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
@@ -171,9 +184,7 @@ class ConcatHeadModule(tf.keras.Model):
             head_vector.append([headfov, modfov])
 
         exprs = [[self.__getExpr(head_vector, i, j) for j in range(len(head_vector))] for i in range(len(head_vector))]
-
-        output_tensor = [[output for output in exprsRow] for exprsRow in exprs]
-        scores = tf.stack([transform_tensor(output) for output in output_tensor])
+        scores = tf.reshape(tf.stack(exprs), shape=(time_steps, time_steps))
 
         return scores, exprs
 
@@ -195,7 +206,7 @@ class ConcatHeadModule(tf.keras.Model):
 
 class ConcatRelationModule(tf.keras.Model):
 
-    def __init__(self, relations_size, ldims, hidden_units, hidden2_units, activation):
+    def __init__(self, relations_vocabulary, ldims, hidden_units, hidden2_units, activation):
         super().__init__(name="ConcatRelationModule")
 
         self.activation = activation
@@ -204,6 +215,8 @@ class ConcatRelationModule(tf.keras.Model):
         self.rhidLayerFOM = utils_tf.Parameter((2 * ldims, hidden_units), 'rhidLayerFOM')
         self.rhidBias = utils_tf.Parameter(hidden_units, 'rhidBias')
         self.rcatBias = utils_tf.Parameter(hidden_units * 2, 'rcatBias')
+        relations_size = len(relations_vocabulary)
+        self.relations_vocabulary = tf.Variable(list(relations_vocabulary), name='rVocabulary')
 
         if self.hidden2_units:
             self.rhid2Layer = utils_tf.Parameter((hidden_units * 2, hidden2_units), 'rhid2Layer')

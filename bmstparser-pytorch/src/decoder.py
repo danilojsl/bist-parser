@@ -8,32 +8,32 @@ def parse_proj(scores, gold=None):
     '''
     Parse using Eisner's algorithm.
     '''
-    number_rows, number_columns = int(scores.shape.dims[0]), int(scores.shape.dims[1])
+    number_rows, number_columns = np.shape(scores)
     if number_rows != number_columns:
         raise ValueError("scores must be a squared matrix with nw+1 rows")
 
-    N = number_rows - 1  # Number of words (excluding root).
+    N = number_rows  # Number of words (excluding root).
 
     # Initialize CKY table.
-    complete = np.zeros([N + 1, N + 1, 2])  # s, t, direction (right=1).
-    incomplete = np.zeros([N + 1, N + 1, 2])  # s, t, direction (right=1).
-    complete_backtrack = -np.ones([N + 1, N + 1, 2], dtype=int)  # s, t, direction (right=1).
-    incomplete_backtrack = -np.ones([N + 1, N + 1, 2], dtype=int)  # s, t, direction (right=1).
+    complete = np.zeros([N, N, 2])  # s, t, direction (right=1).
+    incomplete = np.zeros([N, N, 2])  # s, t, direction (right=1).
+    complete_backtrack = -np.ones([N, N, 2], dtype=int)  # s, t, direction (right=1).
+    incomplete_backtrack = -np.ones([N, N, 2], dtype=int)  # s, t, direction (right=1).
 
-    # Loop from smaller items to larger items.
-    for k in range(1, N + 1):
-        for s in range(N - k + 1):
+    # Loop from smaller itncems to larger items.
+    for k in range(1, N):
+        for s in range(N - k):
             t = s + k
 
             # First, create incomplete items.
             # left tree
             incomplete_vals0 = complete[s, s:t, 1] + complete[(s + 1):(t + 1), t, 0] + scores[t, s] + (
-                0.0 if gold is not None and gold[s] == t else 1.0)
+            0.0 if gold is not None and gold[s] == t else 1.0)
             incomplete[s, t, 0] = np.max(incomplete_vals0)
             incomplete_backtrack[s, t, 0] = s + np.argmax(incomplete_vals0)
             # right tree
             incomplete_vals1 = complete[s, s:t, 1] + complete[(s + 1):(t + 1), t, 0] + scores[s, t] + (
-                0.0 if gold is not None and gold[t] == s else 1.0)
+            0.0 if gold is not None and gold[t] == s else 1.0)
             incomplete[s, t, 1] = np.max(incomplete_vals1)
             incomplete_backtrack[s, t, 1] = s + np.argmax(incomplete_vals1)
 
@@ -47,8 +47,8 @@ def parse_proj(scores, gold=None):
             complete[s, t, 1] = np.max(complete_vals1)
             complete_backtrack[s, t, 1] = s + 1 + np.argmax(complete_vals1)
 
-    heads = [-1 for _ in range(N + 1)]  # -np.ones(N+1, dtype=int)
-    backtrack_eisner(incomplete_backtrack, complete_backtrack, 0, N, 1, 1, heads)
+    heads = [-1 for _ in range(N)]  # -np.ones(N+1, dtype=int)
+    backtrack_eisner(incomplete_backtrack, complete_backtrack, 0, N - 1, 1, 1, heads)
 
     return heads
 

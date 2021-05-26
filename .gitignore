@@ -108,3 +108,4 @@ ENV/
 ## model
 model*/
 .idea/
+venv/

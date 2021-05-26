@@ -6,7 +6,8 @@ from optparse import OptionParser
 
 import torch
 
-import mstlstm
+# import mstlstm
+import mstlstm_v2
 import utils
 
 
@@ -31,12 +32,12 @@ def evaluate_model():
         print(python_command)
         os.system(python_command)
         # time.sleep(60)
-        # with open(devpath + '.txt', 'r') as f:
-        #     for l in f:
-        #         if l.startswith('UAS'):
-        #             print('UAS:%s' % l.strip().split()[-1])
-        #         elif l.startswith('LAS'):
-        #             print('LAS:%s' % l.strip().split()[-1])
+        with open(devpath + '.txt', 'r') as f:
+            for l in f:
+                if l.startswith('UAS'):
+                    print('UAS:%s' % l.strip().split()[-1])
+                elif l.startswith('LAS'):
+                    print('LAS:%s' % l.strip().split()[-1])
 
 
 if __name__ == '__main__':
@@ -44,16 +45,16 @@ if __name__ == '__main__':
 
     training_phase = True  # False implies prediction phase
 
-    parser.add_option("--outdir", type="string", dest="output", default="/model")
+    parser.add_option("--outdir", type="string", dest="output", default="/model-tiny-pytorch")
 
     parser.add_option("--numthread", type="int", dest="numthread", default=8)
 
     if training_phase:
         parser.add_option("--predict", action="store_true", dest="predictFlag", default=False)
         parser.add_option("--train", dest="conll_train", help="Annotated CONLL train file", metavar="FILE",
-                          default="/corpus/en-small-ud-train.conllu")
+                          default="/corpus/en-tiny-ud-train.conllu")
         parser.add_option("--dev", dest="conll_dev", help="Annotated CONLL dev file", metavar="FILE",
-                          default="/corpus/en-small-ud-dev.conllu")
+                          default="/corpus/en-tiny-ud-dev.conllu")
 
         parser.add_option("--multi", dest="multi", help="Annotated CONLL multi-train file", metavar="FILE",
                           default=False)
@@ -66,7 +67,7 @@ if __name__ == '__main__':
         parser.add_option("--oembedding", type="int", dest="oembedding_dims", default=0) #ontology
         parser.add_option("--cembedding", type="int", dest="cembedding_dims", default=0) #cpos
 
-        parser.add_option("--epochs", type="int", dest="epochs", default=5)
+        parser.add_option("--epochs", type="int", dest="epochs", default=10)
         parser.add_option("--hidden", type="int", dest="hidden_units", default=100)
         parser.add_option("--hidden2", type="int", dest="hidden2_units", default=0)
         parser.add_option("--optim", type="string", dest="optim", default='adam')
@@ -77,18 +78,18 @@ if __name__ == '__main__':
 
         parser.add_option("--params", dest="params", help="Parameters file", metavar="FILE", default="params.pickle")
         parser.add_option("--model", dest="model", help="Load/Save model file", metavar="FILE",
-                          default="/model/neuralfirstorder.model")
+                          default="/../model-tiny-pytorch/neuralfirstorder.model")
 
     else:
         parser.add_option("--predict", action="store_true", dest="predictFlag", default=True)
 
         parser.add_option("--test", dest="conll_test", help="Annotated CONLL test file", metavar="FILE",
-                          default="/corpus/en-ud-test.conllu")
+                          default="/../corpus/en-ud-test.conllu")
 
         parser.add_option("--params", dest="params", help="Parameters file", metavar="FILE",
-                          default="/model/params.pickle")
+                          default="/model-pytorch/params.pickle")
         parser.add_option("--model", dest="model", help="Load/Save model file", metavar="FILE",
-                          default="/model/neuralfirstorder.model3")
+                          default="/model-pytorch/neuralfirstorder.model3")
 
     (options, args) = parser.parse_args()
     # Comment multiprocess when debugging
@@ -102,7 +103,7 @@ if __name__ == '__main__':
     print('Current directory: ' + os.getcwd())
     output_file = os.getcwd() + options.output
     model_path = os.getcwd() + options.model
-    utils_path = os.getcwd() + '/bmstparser/src/utils/'  # 'src/utils/'
+    utils_path = os.getcwd() + '/bmstparser-pytorch/src/utils/'  # 'src/utils/'
     # Added to run from IntelliJ
 
     if options.predictFlag:
@@ -115,7 +116,7 @@ if __name__ == '__main__':
             words, enum_word, pos, rels, onto, cpos, stored_opt = pickle.load(paramsfp)
 
         print('Initializing lstm mstparser:')
-        parser = mstlstm.MSTParserLSTM(words, pos, rels, enum_word, stored_opt, onto, cpos)
+        parser = mstlstm_v2.MSTParserLSTM(words, pos, rels, enum_word, stored_opt, onto, cpos)
         parser.load(model_path)
         conllu = (os.path.splitext(test_file.lower())[1] == '.conllu')
         testpath = os.path.join(output_file, 'test_pred.conll' if not conllu else 'test_pred.conllu')
@@ -127,8 +128,10 @@ if __name__ == '__main__':
         utils.write_conll(testpath, test_res)
 
         if not conllu:
+            print("Executing perl command")
             os.system('perl ' + utils_path + 'eval.pl -g ' + test_file + ' -s ' + testpath + ' > ' + testpath + '.txt')
         else:
+            print("Executing python command")
             python_command = 'python3 ' + utils_path + 'evaluation_script/conll17_ud_eval.py -v -w ' + utils_path + \
                              'evaluation_script/weights.clas ' + test_file + ' ' + testpath + ' > ' + testpath + '.txt'
             print(python_command)
@@ -155,11 +158,11 @@ if __name__ == '__main__':
         print('Finished collecting vocabulary')
 
         print('Initializing mst-parser:')
-        parser = mstlstm.MSTParserLSTM(words, pos, rels, enum_word, options, onto, cpos)
+        parser = mstlstm_v2.MSTParserLSTM(words, pos, rels, enum_word, options, onto, cpos)
         for epoch in range(options.epochs):
             print('Starting epoch', epoch)
             parser.train(train_file)
             parser.save(os.path.join(output_file, os.path.basename(model_path) + str(epoch + 1)))
-            # evaluate_model()
+            evaluate_model()
 
 

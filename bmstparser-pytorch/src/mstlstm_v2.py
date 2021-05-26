@@ -13,8 +13,10 @@ from torch.nn.init import *
 import decoder
 import utils
 from utils import read_conll
+from parser_modules_tf import EmbeddingsLookup
 
-use_gpu = True if torch.cuda.is_available() else False
+# use_gpu = True if torch.cuda.is_available() else False
+use_gpu = False
 
 
 def get_data(variable):
@@ -96,10 +98,7 @@ class MSTParserLSTMModel(nn.Module):
             self.init_hidden(self.ldims) for _ in range(4)]
 
         self.wlookup = nn.Embedding(len(vocab) + 3, self.wdims)
-        self.plookup = nn.Embedding(len(pos) + 3, self.pdims)
-        self.rlookup = nn.Embedding(len(rels), self.rdims)
-        self.olookup = nn.Embedding(len(onto) + 3, self.odims)
-        self.clookup = nn.Embedding(len(cpos) + 3, self.cdims)
+        self.embeddings = EmbeddingsLookup(self.wdims, len(vocab) + 3, False)
 
         self.hidden_units = options.hidden_units
         self.hidden2_units = options.hidden2_units
@@ -210,17 +209,24 @@ class MSTParserLSTMModel(nn.Module):
             entry.pred_parent_id = head
             entry.pred_relation = '_'
 
-        # TODO: Uncomment modifying with new __evaluateLabel arguments
-        # head_list = list(heads)
-        # for modifier, head in enumerate(head_list[1:]):
-        #     scores, exprs = self.__evaluateLabel(
-        #         sentence, head, modifier + 1)
-        #     sentence[modifier + 1].pred_relation = self.rel_list[max(
-        #         enumerate(scores), key=itemgetter(1))[0]]
+        for modifier, head in enumerate(heads[1:]):
+
+            if sentence[head].rheadfov is None:
+                sentence[head].rheadfov = torch.mm(concatenate_tensors([sentence[head].lstms[0],
+                                                                        sentence[head].lstms[1]]),
+                                                   self.rhidLayerFOH)
+
+            if sentence[modifier + 1].rmodfov is None:
+                sentence[modifier + 1].rmodfov = torch.mm(concatenate_tensors([sentence[modifier + 1].lstms[0],
+                                                                               sentence[modifier + 1].lstms[1]]),
+                                                          self.rhidLayerFOM)
+
+            scores, _ = self.__evaluateLabel(sentence[head].rheadfov, sentence[modifier + 1].rmodfov)
+            sentence[modifier + 1].pred_relation = self.rel_list[max(enumerate(scores), key=itemgetter(1))[0]]
 
     def forward(self, sentence):
 
-        self.process_sentence_embeddings(sentence)
+        # self.process_sentence_embeddings(sentence)
 
         num_vec = len(sentence)
         features_for = [entry.vec for entry in sentence]
@@ -277,7 +283,9 @@ class MSTParserLSTMModel(nn.Module):
             c = float(self.wordsCount.get(entry.norm, 0))
             dropFlag = (random.random() < (c / (0.25 + c)))
             w_index = int(self.vocab.get(entry.norm, 0)) if dropFlag else 0
-            wordvec = self.wlookup(scalar(w_index)) if self.wdims > 0 else None
+            # wordvec = self.wlookup(scalar(w_index)) if self.wdims > 0 else None
+            word_vec_np = self.embeddings.lookup(np.array(w_index)).numpy().reshape(1, self.wdims)
+            wordvec = torch.tensor(word_vec_np)
 
             entry.vec = wordvec
             entry.lstms = [entry.vec, entry.vec]
@@ -307,8 +315,7 @@ class MSTParserLSTM:
             for iSentence, sentence in enumerate(read_conll(conllFP)):
                 self.model.hid_for_1, self.model.hid_back_1, self.model.hid_for_2, self.model.hid_back_2 = [
                     self.model.init_hidden(self.model.ldims) for _ in range(4)]
-                conll_sentence = [entry for entry in sentence if isinstance(
-                    entry, utils.ConllEntry)]
+                conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
                 self.model.predict(conll_sentence)
                 yield conll_sentence
 
@@ -331,7 +338,7 @@ class MSTParserLSTM:
         start = time.time()
         with open(conll_path, 'r') as conllFP:
             shuffledData = list(read_conll(conllFP))
-            random.shuffle(shuffledData)
+            # random.shuffle(shuffledData)
             for iSentence, sentence in enumerate(shuffledData):
                 # print("Initializing hidden and cell states values to 0")
                 self.model.hid_for_1, self.model.hid_back_1, self.model.hid_for_2, self.model.hid_back_2 = [
@@ -341,11 +348,7 @@ class MSTParserLSTM:
                 #     print(self.model.hidLayerFOM)
                 if iSentence % 100 == 0 and iSentence != 0:
                     print('Processing sentence number:', iSentence,
-                          'eloss:', eloss,
-                          'etotal:', etotal,
                           'Loss:', eloss / etotal,
-                          'eerrors:', float(eerrors),
-                          'Errors:', (float(eerrors)) / etotal,
                           'Time', time.time() - start)
                     start = time.time()
                     eerrors = 0
@@ -355,8 +358,10 @@ class MSTParserLSTM:
                     # print(self.model.hidLayerFOM)
 
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
+                self.model.process_sentence_embeddings(conll_sentence)
 
                 e_output, errs, lerrs = self.model.forward(conll_sentence)
+
                 eerrors += e_output
                 eloss += e_output
                 mloss += e_output

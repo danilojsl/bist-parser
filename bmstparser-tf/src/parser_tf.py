@@ -6,12 +6,13 @@ from os import path
 import tensorflow as tf
 
 import utils
-import mstlstm_tf
+import mstlstm_keras
+# import mstlstm_tf
 
 if __name__ == '__main__':
     parser = OptionParser()
 
-    parser.add_option("--outdir", type="string", dest="output", default="/model-small-tf")
+    parser.add_option("--outdir", type="string", dest="output", default="/model-light-small-tf")
 
     parser.add_option("--train", dest="conll_train", help="Annotated CONLL train file", metavar="FILE",
                       default="/corpus/en-small-ud-train.conllu")
@@ -20,7 +21,7 @@ if __name__ == '__main__':
 
     parser.add_option("--wembedding", type="int", dest="wembedding_dims", default=100)
 
-    parser.add_option("--epochs", type="int", dest="epochs", default=7)
+    parser.add_option("--epochs", type="int", dest="epochs", default=3)
     parser.add_option("--hidden", type="int", dest="hidden_units", default=100)
     parser.add_option("--hidden2", type="int", dest="hidden2_units", default=0)
     parser.add_option("--optim", type="string", dest="optim", default='adam')
@@ -57,11 +58,12 @@ if __name__ == '__main__':
 
     print('Initializing mst-parser with Stateless LSTM:')
     tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
-    parser = mstlstm_tf.MSTParserLSTM(words, rels, enum_word, options)
+    parser = mstlstm_keras.MSTParserLSTM(words, rels, enum_word, options)
     for epoch in range(options.epochs):
         print('Starting epoch', epoch)
         parser.train(train_file)
 
         print('Saving model...')
         base_name = output_path + '/' + model_name
-        parser.save(base_name, str(epoch + 1))
+        # parser.save(base_name, str(epoch + 1))
+        # parser.save_light(base_name, str(epoch + 1))
