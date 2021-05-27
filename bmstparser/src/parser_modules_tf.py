@@ -51,7 +51,7 @@ class FirstBlockLSTMModule(tf.keras.layers.Layer):
     def __init__(self, lstm_dims):
         super().__init__(name="FirstBlockLSTMModule")
         print("In FirstBlockLSTMModule")
-        self.initializer = tf.keras.initializers.GlorotUniform()  # Xavier uniform
+        self.initializer = tf.keras.initializers.GlorotUniform(seed=1)  # Xavier uniform
         self.sample_size = 1
         self.ini_cell_state = tf.zeros(shape=[self.sample_size, lstm_dims], name='c_first_lstm')
         self.ini_hidden_state = tf.zeros(shape=[self.sample_size, lstm_dims], name='h_first_lstm')
