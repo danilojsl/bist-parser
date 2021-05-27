@@ -42,9 +42,9 @@ if __name__ == '__main__':
     parser.add_option("--outdir", type="string", dest="output", default="/model-small-tf")
 
     parser.add_option("--train", dest="conll_train", help="Annotated CONLL train file", metavar="FILE",
-                      default="/corpus/en-small-ud-train.conllu")
+                      default="/corpus/en-tiny-ud-train.conllu")
     parser.add_option("--dev", dest="conll_dev", help="Annotated CONLL dev file", metavar="FILE",
-                      default="/corpus/en-small-ud-dev.conllu")
+                      default="/corpus/en-tiny-ud-dev.conllu")
 
     # multi-task has been deleted for bloated code
 

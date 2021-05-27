@@ -1,6 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Embedding
 import utils_tf
+from tensorflow.keras.layers import LSTM
 
 
 class EmbeddingsLookup:
@@ -33,17 +34,30 @@ class EmbeddingsModule(tf.keras.layers.Layer):
         return word_vec
 
 
-class BiLSTMModule(tf.keras.layers.Layer):
-
-    def __init__(self, lstm_dims):
-        super().__init__(name="BiLSTMModule")
-        self.blockLstm = FirstBlockLSTMModule(lstm_dims)
-        self.nextBlockLstm = NextBlockLSTM(lstm_dims)
-
-    def call(self, inputs):
-        block_lstm1_output = self.blockLstm(inputs)
-        block_lstm2_output = self.nextBlockLstm(block_lstm1_output)
-        return block_lstm2_output
+# class BiLSTMModule(tf.keras.layers.Layer):
+#
+#     def __init__(self, lstm_dims):
+#         super().__init__(name="BiLSTMModule")
+#         self.blockLstm = FirstBlockLSTMModule(lstm_dims)
+#         self.nextBlockLstm = NextBlockLSTM(lstm_dims)
+#
+#     def call(self, inputs):
+#         block_lstm1_output = self.blockLstm(inputs)
+#         block_lstm2_output = self.nextBlockLstm(block_lstm1_output)
+#         return block_lstm2_output
+#
+#
+# class BiLSTMKerasModule(tf.keras.layers.Layer):
+#
+#     def __init__(self, lstm_dims):
+#         super().__init__(name="BiLSTMModule")
+#         self.blockLstm = FirstBiLSTMModule(lstm_dims)
+#         self.nextBlockLstm = NextBiLSTMModule(lstm_dims)
+#
+#     def call(self, inputs):
+#         block_lstm1_output = self.blockLstm(inputs)
+#         block_lstm2_output = self.nextBlockLstm(block_lstm1_output)
+#         return block_lstm2_output
 
 
 class FirstBlockLSTMModule(tf.keras.layers.Layer):
@@ -148,6 +162,78 @@ class NextBlockLSTM(tf.keras.layers.Layer):
                                           wci=self.weight_input_gate, wcf=self.weight_forget_gate,
                                           wco=self.weight_output_gate, b=self.bias)
         return block_lstm
+
+
+class FirstBiLSTMModule(tf.keras.layers.Layer):
+
+    def __init__(self, lstm_dims):
+        super().__init__(name="FirstBiLSTMModule")
+        # Input data
+        self.sample_size = 1  # batch size
+        self.lstm_dims = lstm_dims
+        self.lstm_for_1 = LSTM(lstm_dims, return_sequences=True, return_state=True)
+        self.lstm_back_1 = LSTM(lstm_dims, return_sequences=True, return_state=True)
+        self.hid_for_1 = tf.zeros(shape=[self.sample_size, self.lstm_dims])
+        self.hid_back_1 = tf.zeros(shape=[self.sample_size, self.lstm_dims])
+
+    def call(self, inputs):
+        # Forward pass
+        # TODO: Raise error when inputs[0].shape.dims != inputs[1].shape.dims
+        time_steps = inputs[0].shape.dims[1]
+
+        vec_for = inputs[0]
+        vec_back = inputs[1]
+
+        res_for_1, _ = self.get_lstm_output(self.lstm_for_1, vec_for, self.hid_for_1)
+        res_back_1, _ = self.get_lstm_output(self.lstm_back_1, vec_back, self.hid_back_1)
+
+        vec_cat = self.concatenate_layers(res_for_1[0], res_back_1[0], time_steps)
+
+        vec_for_2 = tf.reshape(tf.concat(vec_cat, 0), shape=(self.sample_size, time_steps, -1))
+        vec_back_2 = tf.reshape(tf.concat(list(reversed(vec_cat)), 0), shape=(self.sample_size, time_steps, -1))
+
+        return [vec_for_2, vec_back_2]
+
+    @staticmethod
+    def get_lstm_output(lstm, input_sequence, initial_state):
+        output = lstm(input_sequence, initial_state=initial_state)
+        hidden_states, hidden_state, cell_state = output[0], output[1], output[2]
+        return hidden_states, (hidden_state, cell_state)
+
+    @staticmethod
+    def concatenate_layers(array1, array2, num_vec):
+        concat_size = array1.shape[1] + array2.shape[1]
+        concat_result = [tf.reshape(tf.concat([array1[i], array2[num_vec - i - 1]], 0), shape=(1, concat_size))
+                         for i in range(num_vec)]
+        return concat_result
+
+
+class NextBiLSTMModule(tf.keras.layers.Layer):
+
+    def __init__(self, lstm_dims):
+        super().__init__(name="NextBiLSTMModule")
+        # Input data
+        self.sample_size = 1  # batch size
+        self.lstm_dims = lstm_dims
+        self.lstm_for_2 = LSTM(lstm_dims, return_sequences=True, return_state=True)
+        self.lstm_back_2 = LSTM(lstm_dims, return_sequences=True, return_state=True)
+        self.hid_for_1 = tf.zeros(shape=[self.sample_size, self.lstm_dims])
+        self.hid_back_1 = tf.zeros(shape=[self.sample_size, self.lstm_dims])
+
+    def call(self, inputs):
+        # Forward pass
+        vec_for_2 = inputs[0]
+        vec_back_2 = inputs[1]
+        res_for_2, _ = self.get_lstm_output(self.lstm_for_2, vec_for_2, self.hid_for_2)
+        res_back_2, _ = self.get_lstm_output(self.lstm_back_2, vec_back_2, self.hid_back_2)
+
+        return [res_for_2, res_back_2]
+
+    @staticmethod
+    def get_lstm_output(lstm_model, input_sequence, initial_state):
+        output = lstm_model(input_sequence, initial_state=initial_state)
+        hidden_states, hidden_state, cell_state = output[0], output[1], output[2]
+        return hidden_states, (hidden_state, cell_state)
 
 
 class ConcatHeadModule(tf.keras.Model):

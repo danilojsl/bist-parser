@@ -12,8 +12,8 @@ import utils_tf
 from parser_modules_tf import ConcatHeadModule
 from parser_modules_tf import ConcatRelationModule
 from parser_modules_tf import EmbeddingsLookup
-from parser_modules_tf import FirstBlockLSTMModule
-from parser_modules_tf import NextBlockLSTM
+from parser_modules_tf import FirstBiLSTMModule
+from parser_modules_tf import NextBiLSTMModule
 from utils import read_conll
 
 
@@ -33,18 +33,18 @@ class BiLSTMModel(tf.keras.Model):
     def __init__(self, lstm_dims):
         super().__init__()
         self.ldims = lstm_dims
-        self.blockLstm = FirstBlockLSTMModule(lstm_dims)
-        self.nextBlockLstm = NextBlockLSTM(lstm_dims)
+        self.lstm = FirstBiLSTMModule(lstm_dims)
+        self.nextLstm = NextBiLSTMModule(lstm_dims)
 
     def call(self, inputs):
         # Forward pass
         # TODO: Raise error when inputs[0].shape.dims != inputs[1].shape.dims
-        block_lstm1_output = self.blockLstm(inputs)
-        block_lstm2_output = self.nextBlockLstm(block_lstm1_output)
+        lstm1_output = self.lstm(inputs)
+        lstm2_output = self.nextLstm(lstm1_output)
 
         time_steps = inputs[0].shape.dims[1]
-        res_for_2 = tf.reshape(block_lstm2_output[0], shape=(time_steps, self.ldims))
-        res_back_2 = tf.reshape(block_lstm2_output[1], shape=(time_steps, self.ldims))
+        res_for_2 = tf.reshape(lstm1_output[0], shape=(time_steps, self.ldims))
+        res_back_2 = tf.reshape(lstm2_output[1], shape=(time_steps, self.ldims))
 
         output = []
         for i in range(time_steps):
