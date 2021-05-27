@@ -19,3 +19,7 @@ def concatenate_layers(array1, array2, num_vec):
     concat_result = [tf.reshape(tf.concat([array1[i], array2[num_vec - i - 1]], 0), shape=(1, concat_size))
                      for i in range(num_vec)]
     return concat_result
+
+
+def init_hidden(dim):
+    return tf.zeros(shape=[1, dim]), tf.zeros(shape=[1, dim])

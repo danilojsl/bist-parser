@@ -118,7 +118,7 @@ class FirstBlockLSTMModule(tf.keras.layers.Layer):
         return concat_result
 
 
-class NextBlockLSTM(tf.keras.layers.Layer):
+class NextBlockLSTM(tf.keras.Model):
 
     def __init__(self, lstm_dims):
         super().__init__(name="NextBlockLSTM")
@@ -164,7 +164,7 @@ class NextBlockLSTM(tf.keras.layers.Layer):
         return block_lstm
 
 
-class FirstBiLSTMModule(tf.keras.layers.Layer):
+class FirstBiLSTMModule(tf.keras.Model):
 
     def __init__(self, lstm_dims):
         super().__init__(name="FirstBiLSTMModule")
@@ -173,8 +173,7 @@ class FirstBiLSTMModule(tf.keras.layers.Layer):
         self.lstm_dims = lstm_dims
         self.lstm_for_1 = LSTM(lstm_dims, return_sequences=True, return_state=True)
         self.lstm_back_1 = LSTM(lstm_dims, return_sequences=True, return_state=True)
-        self.hid_for_1 = tf.zeros(shape=[self.sample_size, self.lstm_dims])
-        self.hid_back_1 = tf.zeros(shape=[self.sample_size, self.lstm_dims])
+        self.hid_for_1, self.hid_back_1 = [utils_tf.init_hidden(self.lstm_dims) for _ in range(2)]
 
     def call(self, inputs):
         # Forward pass
@@ -196,8 +195,11 @@ class FirstBiLSTMModule(tf.keras.layers.Layer):
 
     @staticmethod
     def get_lstm_output(lstm, input_sequence, initial_state):
+        # initial_state shape: tuple((1, 126), (1,126))
+        # input_sequence shape: (1, time_steps, 100))
         output = lstm(input_sequence, initial_state=initial_state)
         hidden_states, hidden_state, cell_state = output[0], output[1], output[2]
+        # hidden_states shape: (1, 30, 126)
         return hidden_states, (hidden_state, cell_state)
 
     @staticmethod
@@ -217,8 +219,7 @@ class NextBiLSTMModule(tf.keras.layers.Layer):
         self.lstm_dims = lstm_dims
         self.lstm_for_2 = LSTM(lstm_dims, return_sequences=True, return_state=True)
         self.lstm_back_2 = LSTM(lstm_dims, return_sequences=True, return_state=True)
-        self.hid_for_1 = tf.zeros(shape=[self.sample_size, self.lstm_dims])
-        self.hid_back_1 = tf.zeros(shape=[self.sample_size, self.lstm_dims])
+        self.hid_for_2, self.hid_back_2 = [utils_tf.init_hidden(self.lstm_dims) for _ in range(2)]
 
     def call(self, inputs):
         # Forward pass

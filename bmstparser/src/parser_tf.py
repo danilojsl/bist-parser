@@ -13,7 +13,7 @@ import mstlstm_predict_tf
 def evaluate_model():
     conllu = (os.path.splitext(dev_file.lower())[1] == '.conllu')
     devpath = os.path.join(output_path, 'dev_epoch_' + str(epoch + 1) + '.conllu')
-    utils.write_conll(devpath, mstlstm_predict_tf.predict(dev_file, options.wembedding_dims, weights_bi_lstm,
+    utils.write_conll(devpath, mstlstm_predict_tf.predict(dev_file, options.wembedding_dims, bi_lstms,
                                                           heads_variables, relations_variables))
 
     if not conllu:
@@ -42,9 +42,9 @@ if __name__ == '__main__':
     parser.add_option("--outdir", type="string", dest="output", default="/model-small-tf")
 
     parser.add_option("--train", dest="conll_train", help="Annotated CONLL train file", metavar="FILE",
-                      default="/corpus/en-tiny-ud-train.conllu")
+                      default="/corpus/en-small-ud-train.conllu")
     parser.add_option("--dev", dest="conll_dev", help="Annotated CONLL dev file", metavar="FILE",
-                      default="/corpus/en-tiny-ud-dev.conllu")
+                      default="/corpus/en-small-ud-dev.conllu")
 
     # multi-task has been deleted for bloated code
 
@@ -96,7 +96,7 @@ if __name__ == '__main__':
         print('Saving model...')
         base_name = output_path + '/' + model_name
         parser.save_light(base_name, str(epoch + 1))
-        weights_bi_lstm, heads_variables, relations_variables = parser.get_model_variables()
+        bi_lstms, heads_variables, relations_variables = parser.get_model_variables()
         # print(f"Weight First LSTM after epoch {epoch}")
         # print(weights_bi_lstm[0][0])
         evaluate_model()

@@ -4,17 +4,18 @@ from operator import itemgetter
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras.activations as F
+from tensorflow.keras.layers import LSTM
 
 import decoder_tf
 import utils
+import utils_tf
 from parser_modules_tf import EmbeddingsLookup
 
 sample_size = 1
 lstm_dims = 126
 
 
-def predict(test_file, embeddings_dims, weights_bi_lstm, heads_variables, relations_variables):
-
+def predict(test_file, embeddings_dims, bi_lstms, heads_variables, relations_variables):
     print('Preparing vocabulary table')
     words, enum_word, pos, rels, onto, cpos = list(utils.vocab(test_file))
     print('Finished collecting vocabulary')
@@ -33,7 +34,7 @@ def predict(test_file, embeddings_dims, weights_bi_lstm, heads_variables, relati
                 sentence_embeddings.append(word_vec)
 
             time_steps = len(sentence_embeddings)
-            bi_lstms_output = compute_bi_lstm_output(sentence_embeddings, time_steps, weights_bi_lstm)
+            bi_lstms_output = compute_bi_lstm_output(bi_lstms, sentence_embeddings, time_steps)
             res_for_2, res_back_2 = bi_lstms_output[0], bi_lstms_output[1]  # Shape (30, 126)
             sentence_bi_lstm = []
             for i in range(time_steps):
@@ -67,52 +68,73 @@ def get_embeddings_input(entry, words, enum_word):
     return w_index
 
 
-def compute_bi_lstm_output(embeddings, time_steps, weights_bi_lstm):
-    weights_first_lstm, weights_next_lstm = weights_bi_lstm[0], weights_bi_lstm[1]
+# def compute_bi_lstm_output(embeddings, time_steps, weights_bi_lstm):
+#     weights_first_lstm, weights_next_lstm = weights_bi_lstm[0], weights_bi_lstm[1]
+#     bi_lstm_input = get_bi_lstm_input(embeddings, time_steps)
+#
+#     block_lstm_for_1 = get_lstm_output(bi_lstm_input[0], weights_first_lstm, time_steps)
+#     block_lstm_back_1 = get_lstm_output(bi_lstm_input[1], weights_first_lstm, time_steps)
+#
+#     next_lstm_inputs = compute_next_lstm_input([block_lstm_for_1, block_lstm_back_1], time_steps)
+#     block_lstm_for_2 = get_lstm_output(next_lstm_inputs[0], weights_next_lstm, time_steps)   # Shape (30, 1, 126)
+#     block_lstm_back_2 = get_lstm_output(next_lstm_inputs[1], weights_next_lstm, time_steps)  # Shape (30, 1, 126)
+#
+#     return [tf.reshape(block_lstm_for_2.h, shape=[time_steps, lstm_dims]),  # Shape (30, 126)
+#             tf.reshape(block_lstm_back_2.h, shape=[time_steps, lstm_dims])]  # Shape (30, 126)
+
+
+def compute_bi_lstm_output(bi_lstms, embeddings, time_steps):
+    first_bi_lstm = bi_lstms[0]
+    next_bi_lstm = bi_lstms[1]
+
     bi_lstm_input = get_bi_lstm_input(embeddings, time_steps)
+    lstm_for_1 = get_lstm_output(first_bi_lstm[0], bi_lstm_input[0])
+    lstm_back_1 = get_lstm_output(first_bi_lstm[1], bi_lstm_input[1])
 
-    block_lstm_for_1 = get_lstm_output(bi_lstm_input[0], weights_first_lstm, time_steps)
-    block_lstm_back_1 = get_lstm_output(bi_lstm_input[1], weights_first_lstm, time_steps)
+    next_lstm_inputs = compute_next_lstm_input([lstm_for_1, lstm_back_1], time_steps)
+    lstm_for_2 = get_lstm_output(next_bi_lstm[0], next_lstm_inputs[0])   # Shape (30, 1, 126)
+    lstm_back_2 = get_lstm_output(next_bi_lstm[1], next_lstm_inputs[1])  # Shape (30, 1, 126)
 
-    next_lstm_inputs = compute_next_lstm_input([block_lstm_for_1, block_lstm_back_1], time_steps)
-    block_lstm_for_2 = get_lstm_output(next_lstm_inputs[0], weights_next_lstm, time_steps)   # Shape (30, 1, 126)
-    block_lstm_back_2 = get_lstm_output(next_lstm_inputs[1], weights_next_lstm, time_steps)  # Shape (30, 1, 126)
-
-    return [tf.reshape(block_lstm_for_2.h, shape=[time_steps, lstm_dims]),  # Shape (30, 126)
-            tf.reshape(block_lstm_back_2.h, shape=[time_steps, lstm_dims])]  # Shape (30, 126)
+    return [tf.reshape(lstm_for_2, shape=[time_steps, lstm_dims]),  # Shape (30, 126)
+            tf.reshape(lstm_back_2, shape=[time_steps, lstm_dims])]  # Shape (30, 126)
 
 
 def get_bi_lstm_input(embeddings, time_steps):
     input_size = embeddings[0].shape[1]
     features_for = embeddings
     features_back = list(reversed(embeddings))
-    vec_for = tf.reshape(tf.concat(features_for, 0), shape=(time_steps, sample_size, input_size))
-    vec_back = tf.reshape(tf.concat(features_back, 0), shape=(time_steps, sample_size, input_size))
+    vec_for = tf.reshape(tf.concat(features_for, 0), shape=(sample_size, time_steps, input_size))
+    vec_back = tf.reshape(tf.concat(features_back, 0), shape=(sample_size, time_steps, input_size))
 
     return [vec_for, vec_back]
 
 
-def get_lstm_output(input_sequence, weights, time_steps):
-    ini_cell_state = tf.zeros(shape=[sample_size, lstm_dims])
-    ini_hidden_state = tf.zeros(shape=[sample_size, lstm_dims])
-    bias = tf.zeros(shape=[lstm_dims * 4])
-    weight_matrix = weights[0]
-    weight_input_gate, weight_forget_gate, weight_output_gate = weights[1], weights[2], weights[3]
+# def get_lstm_output(input_sequence, weights, time_steps):
+#     ini_cell_state = tf.zeros(shape=[sample_size, lstm_dims])
+#     ini_hidden_state = tf.zeros(shape=[sample_size, lstm_dims])
+#     bias = tf.zeros(shape=[lstm_dims * 4])
+#     weight_matrix = weights[0]
+#     weight_input_gate, weight_forget_gate, weight_output_gate = weights[1], weights[2], weights[3]
+#
+#     block_lstm = tf.raw_ops.BlockLSTM(seq_len_max=time_steps, x=input_sequence, cs_prev=ini_cell_state,
+#                                       h_prev=ini_hidden_state, w=weight_matrix,
+#                                       wci=weight_input_gate, wcf=weight_forget_gate,
+#                                       wco=weight_output_gate, b=bias)
+#     return block_lstm
 
-    block_lstm = tf.raw_ops.BlockLSTM(seq_len_max=time_steps, x=input_sequence, cs_prev=ini_cell_state,
-                                      h_prev=ini_hidden_state, w=weight_matrix,
-                                      wci=weight_input_gate, wcf=weight_forget_gate,
-                                      wco=weight_output_gate, b=bias)
-    return block_lstm
+
+def get_lstm_output(lstm_model, input_sequence):
+    # lstm = LSTM(lstm_dims, return_sequences=True, return_state=True)
+    ini_hid_state = tf.zeros(shape=[1, lstm_dims]), tf.zeros(shape=[1, lstm_dims])
+    output = lstm_model(input_sequence, initial_state=ini_hid_state)
+    hidden_states, hidden_state, cell_state = output[0], output[1], output[2]
+    return hidden_states
 
 
 def compute_next_lstm_input(lstm_outputs, time_steps):
-    block_lstm_for_1, block_lstm_back_1 = lstm_outputs[0], lstm_outputs[1]  # Shape(30, 1, 126)
-    res_shape = [sample_size, time_steps, lstm_dims]
-    res_forward = tf.reshape(block_lstm_for_1.h, shape=res_shape)  # Shape (1, 30, 126)
-    res_backward = tf.reshape(block_lstm_back_1.h, shape=res_shape)  # Shape (1, 30, 126)
+    res_forward, res_backward = lstm_outputs[0], lstm_outputs[1]  # Shape(30, 1, 126)
 
-    vec_shape = [time_steps, sample_size, -1]
+    vec_shape = [sample_size, time_steps, -1]
     vec_forward = tf.reshape(tf.concat([res_forward, tf.reverse(res_backward, axis=[1])], 2), shape=vec_shape)
     vec_backward = tf.reverse(vec_forward, axis=[0])
 

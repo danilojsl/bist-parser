@@ -43,7 +43,7 @@ class BiLSTMModel(tf.keras.Model):
         lstm2_output = self.nextLstm(lstm1_output)
 
         time_steps = inputs[0].shape.dims[1]
-        res_for_2 = tf.reshape(lstm1_output[0], shape=(time_steps, self.ldims))
+        res_for_2 = tf.reshape(lstm2_output[0], shape=(time_steps, self.ldims))
         res_back_2 = tf.reshape(lstm2_output[1], shape=(time_steps, self.ldims))
 
         output = []
@@ -218,18 +218,21 @@ class MSTParserLSTM:
         self.concatRelations.save(export_dir, save_traces=False)
 
     def get_model_variables(self):
-        w_first_lstm = self.biLSTMModel.trainable_variables[0]
-        wig_first_lstm = self.biLSTMModel.trainable_variables[1]
-        wfg_first_lstm = self.biLSTMModel.trainable_variables[2]
-        wog_first_lstm = self.biLSTMModel.trainable_variables[3]
-        weights_first_lstm = [w_first_lstm, wig_first_lstm, wfg_first_lstm, wog_first_lstm]
-        w_next_lstm = self.biLSTMModel.trainable_variables[4]
-        wig_next_lstm = self.biLSTMModel.trainable_variables[5]
-        wfg_next_lstm = self.biLSTMModel.trainable_variables[6]
-        wog_next_lstm = self.biLSTMModel.trainable_variables[7]
-        weights_next_lstm = [w_next_lstm, wig_next_lstm, wfg_next_lstm, wog_next_lstm]
-
-        weights_bi_lstm = [weights_first_lstm, weights_next_lstm]
+        #w_first_lstm = self.biLSTMModel.trainable_variables[0]
+        # wig_first_lstm = self.biLSTMModel.trainable_variables[1]
+        # wfg_first_lstm = self.biLSTMModel.trainable_variables[2]
+        # wog_first_lstm = self.biLSTMModel.trainable_variables[3]
+        # weights_first_lstm = [w_first_lstm, wig_first_lstm, wfg_first_lstm, wog_first_lstm]
+        # w_next_lstm = self.biLSTMModel.trainable_variables[4]
+        # wig_next_lstm = self.biLSTMModel.trainable_variables[5]
+        # wfg_next_lstm = self.biLSTMModel.trainable_variables[6]
+        # wog_next_lstm = self.biLSTMModel.trainable_variables[7]
+        # weights_next_lstm = [w_next_lstm, wig_next_lstm, wfg_next_lstm, wog_next_lstm]
+        #
+        # weights_bi_lstm = [weights_first_lstm, weights_next_lstm]
+        first_bi_lstm = [self.biLSTMModel.lstm.lstm_for_1, self.biLSTMModel.lstm.lstm_back_1]
+        next_bi_lstm = [self.biLSTMModel.nextLstm.lstm_for_2, self.biLSTMModel.nextLstm.lstm_back_2]
+        bi_lstms = [first_bi_lstm, next_bi_lstm]
 
         hid_layer_foh = self.concatHeads.trainable_variables[0]
         hid_layer_fom = self.concatHeads.trainable_variables[1]
@@ -247,5 +250,5 @@ class MSTParserLSTM:
         relations_variables = [r_hid_layer_foh, r_hid_layer_fom, r_hid_bias, r_out_layer, r_out_bias,
                                relations_vocabulary]
 
-        return weights_bi_lstm, heads_variables, relations_variables
+        return bi_lstms, heads_variables, relations_variables
 
