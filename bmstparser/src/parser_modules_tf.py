@@ -3,6 +3,21 @@ from tensorflow.keras.layers import Embedding
 import utils_tf
 
 
+class EmbeddingsLookup:
+
+    def __init__(self, embeddings_size, vocabulary_size, training=True):
+        # TODO: Shape changes between prediction and training
+        if training:
+            self.shape = tf.constant([embeddings_size, vocabulary_size])
+        else:
+            self.shape = tf.constant([vocabulary_size, embeddings_size])
+        self.seed = tf.constant([1, 1], dtype=tf.int64)
+        self.embeddings_table = tf.random.stateless_normal(self.shape, self.seed)
+
+    def lookup(self, inputs):
+        return tf.nn.embedding_lookup(self.embeddings_table, inputs)
+
+
 class EmbeddingsModule(tf.keras.layers.Layer):
 
     def __init__(self, vocab_size, wdims):
@@ -35,6 +50,7 @@ class FirstBlockLSTMModule(tf.keras.layers.Layer):
 
     def __init__(self, lstm_dims):
         super().__init__(name="FirstBlockLSTMModule")
+        print("In FirstBlockLSTMModule")
         self.initializer = tf.keras.initializers.GlorotUniform()  # Xavier uniform
         self.sample_size = 1
         self.ini_cell_state = tf.zeros(shape=[self.sample_size, lstm_dims], name='c_first_lstm')
@@ -44,10 +60,12 @@ class FirstBlockLSTMModule(tf.keras.layers.Layer):
         self.lstm_dims = lstm_dims
 
     def build(self, input_shape):
+        print("In build FirstBlockLSTMModule")
         self.input_size = input_shape[0].dims[2]
         values = self.initializer(shape=[self.input_size + self.lstm_dims, self.lstm_dims * 4])
         self.weight_matrix = tf.Variable(values, name='w_first_lstm')
-
+        print("Initial Weight First LSTM:")
+        print(self.weight_matrix)
         values = self.initializer(shape=[self.lstm_dims])
         self.weight_input_gate = tf.Variable(values, name='wig_first_lstm')
         self.weight_forget_gate = tf.Variable(values, name='wfg_first_lstm')
@@ -124,6 +142,7 @@ class NextBlockLSTM(tf.keras.layers.Layer):
         return [res_for_2, res_back_2]
 
     def get_lstm_output(self, input_sequence, time_steps):
+        # TODO: Check if ini_cell_state and ini_hidden_state are 0 on each iteration
         block_lstm = tf.raw_ops.BlockLSTM(seq_len_max=time_steps, x=input_sequence, cs_prev=self.ini_cell_state,
                                           h_prev=self.ini_hidden_state, w=self.weight_matrix,
                                           wci=self.weight_input_gate, wcf=self.weight_forget_gate,
@@ -195,7 +214,7 @@ class ConcatHeadModule(tf.keras.Model):
 
 class ConcatRelationModule(tf.keras.Model):
 
-    def __init__(self, relations_size, ldims, hidden_units, hidden2_units, activation):
+    def __init__(self, relations_vocabulary, ldims, hidden_units, hidden2_units, activation):
         super().__init__(name="ConcatRelationModule")
 
         self.activation = activation
@@ -204,6 +223,8 @@ class ConcatRelationModule(tf.keras.Model):
         self.rhidLayerFOM = utils_tf.Parameter((2 * ldims, hidden_units), 'rhidLayerFOM')
         self.rhidBias = utils_tf.Parameter(hidden_units, 'rhidBias')
         self.rcatBias = utils_tf.Parameter(hidden_units * 2, 'rcatBias')
+        relations_size = len(relations_vocabulary)
+        self.relations_vocabulary = tf.Variable(list(relations_vocabulary), name='rVocabulary')
 
         if self.hidden2_units:
             self.rhid2Layer = utils_tf.Parameter((hidden_units * 2, hidden2_units), 'rhid2Layer')
@@ -237,3 +258,4 @@ class ConcatRelationModule(tf.keras.Model):
             output = tf.matmul(activation_result, self.routLayer) + self.routBias
 
         return output[0]
+

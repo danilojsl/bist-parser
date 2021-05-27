@@ -7,6 +7,34 @@ import tensorflow as tf
 
 import utils
 import mstlstm_tf
+import mstlstm_predict_tf
+
+
+def evaluate_model():
+    conllu = (os.path.splitext(dev_file.lower())[1] == '.conllu')
+    devpath = os.path.join(output_path, 'dev_epoch_' + str(epoch + 1) + '.conllu')
+    utils.write_conll(devpath, mstlstm_predict_tf.predict(dev_file, options.wembedding_dims, weights_bi_lstm,
+                                                          heads_variables, relations_variables))
+
+    if not conllu:
+        perl_command = 'perl ' + utils_path + '/eval.pl -g ' + dev_file + ' -s ' + devpath + ' > ' \
+                       + devpath + '.txt'
+        os.system(perl_command)
+        with open(devpath + '.txt', 'r') as f:
+            for i in range(0, 3):
+                print(f.readline())
+    else:
+        python_command = 'python3 ' + utils_path + 'evaluation_script/conll17_ud_eval.py -v -w ' + \
+                         utils_path + 'evaluation_script/weights.clas ' + dev_file + ' ' + devpath + ' > ' \
+                         + devpath + '.txt'
+        os.system(python_command)
+        with open(devpath + '.txt', 'r') as f:
+            for l in f:
+                if l.startswith('UAS'):
+                    print('UAS:%s' % l.strip().split()[-1])
+                elif l.startswith('LAS'):
+                    print('LAS:%s' % l.strip().split()[-1])
+
 
 if __name__ == '__main__':
     parser = OptionParser()
@@ -14,13 +42,15 @@ if __name__ == '__main__':
     parser.add_option("--outdir", type="string", dest="output", default="/model-small-tf")
 
     parser.add_option("--train", dest="conll_train", help="Annotated CONLL train file", metavar="FILE",
-                      default="/corpus/en-small-ud-train.conllu")
+                      default="/corpus/en-tiny-ud-train.conllu")
+    parser.add_option("--dev", dest="conll_dev", help="Annotated CONLL dev file", metavar="FILE",
+                      default="/corpus/en-tiny-ud-dev.conllu")
 
     # multi-task has been deleted for bloated code
 
     parser.add_option("--wembedding", type="int", dest="wembedding_dims", default=100)
 
-    parser.add_option("--epochs", type="int", dest="epochs", default=7)
+    parser.add_option("--epochs", type="int", dest="epochs", default=20)
     parser.add_option("--hidden", type="int", dest="hidden_units", default=100)
     parser.add_option("--hidden2", type="int", dest="hidden2_units", default=0)
     parser.add_option("--optim", type="string", dest="optim", default='adam')
@@ -49,6 +79,7 @@ if __name__ == '__main__':
     print(f'Training with file {options.conll_train}')
     # Added to run from IntelliJ
     train_file = os.getcwd() + options.conll_train
+    dev_file = os.getcwd() + options.conll_dev
     # Added to run from IntelliJ
 
     print('Preparing vocabulary table')
@@ -64,4 +95,8 @@ if __name__ == '__main__':
 
         print('Saving model...')
         base_name = output_path + '/' + model_name
-        parser.save(base_name, str(epoch + 1))
+        parser.save_light(base_name, str(epoch + 1))
+        weights_bi_lstm, heads_variables, relations_variables = parser.get_model_variables()
+        # print(f"Weight First LSTM after epoch {epoch}")
+        # print(weights_bi_lstm[0][0])
+        evaluate_model()

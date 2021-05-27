@@ -19,7 +19,6 @@ def evaluate_model():
     if not conllu:
         perl_command = 'perl ' + utils_path + '/eval.pl -g ' + dev_file + ' -s ' + devpath + ' > ' \
                        + devpath + '.txt'
-        print(perl_command)
         os.system(perl_command)
         with open(devpath + '.txt', 'r') as f:
             for i in range(0, 3):
@@ -28,15 +27,14 @@ def evaluate_model():
         python_command = 'python3 ' + utils_path + 'evaluation_script/conll17_ud_eval.py -v -w ' + \
                          utils_path + 'evaluation_script/weights.clas ' + dev_file + ' ' + devpath + ' > ' \
                          + devpath + '.txt'
-        print(python_command)
         os.system(python_command)
-        # time.sleep(60)
-        # with open(devpath + '.txt', 'r') as f:
-        #     for l in f:
-        #         if l.startswith('UAS'):
-        #             print('UAS:%s' % l.strip().split()[-1])
-        #         elif l.startswith('LAS'):
-        #             print('LAS:%s' % l.strip().split()[-1])
+        time.sleep(60)
+        with open(devpath + '.txt', 'r') as f:
+            for l in f:
+                if l.startswith('UAS'):
+                    print('UAS:%s' % l.strip().split()[-1])
+                elif l.startswith('LAS'):
+                    print('LAS:%s' % l.strip().split()[-1])
 
 
 if __name__ == '__main__':

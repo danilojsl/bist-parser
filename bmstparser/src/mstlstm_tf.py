@@ -11,7 +11,7 @@ import utils
 import utils_tf
 from parser_modules_tf import ConcatHeadModule
 from parser_modules_tf import ConcatRelationModule
-from parser_modules_tf import EmbeddingsModule
+from parser_modules_tf import EmbeddingsLookup
 from parser_modules_tf import FirstBlockLSTMModule
 from parser_modules_tf import NextBlockLSTM
 from utils import read_conll
@@ -56,12 +56,12 @@ class BiLSTMModel(tf.keras.Model):
 
 
 class MSTParserLSTM:
-
-    def __init__(self, vocab, rels, enum_word, options):
+    # Minimum-Spanning Tree Parser (MST)
+    def __init__(self, vocab, relations, enum_word, options):
         self.trainer = get_optim(options)
 
         # Embeddings Layers
-        self.embeddings = EmbeddingsModule(len(vocab) + 3, options.wembedding_dims)
+        self.embeddings = EmbeddingsLookup(len(vocab) + 3, options.wembedding_dims)
         self.wordsCount = vocab
         self.vocab = {word: ind + 3 for word, ind in enum_word.items()}
         self.vocab['*PAD*'] = 1
@@ -73,10 +73,10 @@ class MSTParserLSTM:
         # Concatenation Layers
         self.activations = {'tanh': F.tanh, 'sigmoid': F.sigmoid, 'relu': F.relu}
         self.activation = self.activations[options.activation]
-        self.rels = {word: ind for ind, word in enumerate(rels)}
+        self.relations_vocabulary = {word: ind for ind, word in enumerate(relations)}
         self.concatHeads = ConcatHeadModule(options.lstm_dims, options.hidden_units, options.hidden2_units,
                                             self.activation)
-        self.concatRelations = ConcatRelationModule(len(self.rels), options.lstm_dims, options.hidden_units,
+        self.concatRelations = ConcatRelationModule(self.relations_vocabulary, options.lstm_dims, options.hidden_units,
                                                     options.hidden2_units, self.activation)
 
         # Input data
@@ -93,7 +93,7 @@ class MSTParserLSTM:
         start = time.time()
         with open(conll_path, 'r') as conllFP:
             shuffledData = list(read_conll(conllFP))
-            random.shuffle(shuffledData)
+            # random.shuffle(shuffledData)
 
             for iSentence, sentence in enumerate(shuffledData):
                 if iSentence % 100 == 0 and iSentence != 0:
@@ -111,7 +111,7 @@ class MSTParserLSTM:
                 gold_heads = []
                 for entry in conll_sentence:
                     embeddings_input = self.get_embeddings_input(entry)
-                    word_vec = self.embeddings(embeddings_input)
+                    word_vec = self.embeddings.lookup(embeddings_input)
                     sentence_embeddings.append(word_vec)
                     gold_heads.append(entry.parent_id)
 
@@ -144,8 +144,8 @@ class MSTParserLSTM:
                             eerrs_sum = self.loss_function(errs, reshaped_lerrs)
 
                 trainable_variables = self.biLSTMModel.trainable_variables + \
-                    self.concatHeads.trainable_variables + \
-                    self.concatRelations.trainable_variables
+                                      self.concatHeads.trainable_variables + \
+                                      self.concatRelations.trainable_variables
                 if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
                     if len(errs) > 0 or len(lerrs) > 0:
                         grads = tape.gradient(eerrs_sum, sources=trainable_variables)
@@ -191,9 +191,8 @@ class MSTParserLSTM:
     def get_relation_errors(self, relations_output, sentence):
         lerrs = []
         for modifier, rscores in enumerate(relations_output):
-            goldLabelInd = self.rels[sentence[modifier + 1].relation]
-            wrongLabelInd = max(((l, scr) for l, scr in enumerate(rscores) if l != goldLabelInd),
-                                key=itemgetter(1))[0]
+            goldLabelInd = self.relations_vocabulary[sentence[modifier + 1].relation]
+            wrongLabelInd = max(((l, scr) for l, scr in enumerate(rscores) if l != goldLabelInd), key=itemgetter(1))[0]
             if rscores[goldLabelInd] < rscores[wrongLabelInd] + 1:
                 lerrs += [rscores[wrongLabelInd] - rscores[goldLabelInd]]
 
@@ -208,3 +207,45 @@ class MSTParserLSTM:
         tf.saved_model.save(self.concatHeads, export_dir)
         export_dir = main_model_dir + "/Relations"
         tf.saved_model.save(self.concatRelations, export_dir)
+
+    def save_light(self, output_path, epoch):
+        main_model_dir = output_path + epoch
+        export_dir = main_model_dir + "/BiLSTM"
+        self.biLSTMModel.save(export_dir, save_traces=False)
+        export_dir = main_model_dir + "/Heads"
+        self.concatHeads.save(export_dir, save_traces=False)
+        export_dir = main_model_dir + "/Relations"
+        self.concatRelations.save(export_dir, save_traces=False)
+
+    def get_model_variables(self):
+        w_first_lstm = self.biLSTMModel.trainable_variables[0]
+        wig_first_lstm = self.biLSTMModel.trainable_variables[1]
+        wfg_first_lstm = self.biLSTMModel.trainable_variables[2]
+        wog_first_lstm = self.biLSTMModel.trainable_variables[3]
+        weights_first_lstm = [w_first_lstm, wig_first_lstm, wfg_first_lstm, wog_first_lstm]
+        w_next_lstm = self.biLSTMModel.trainable_variables[4]
+        wig_next_lstm = self.biLSTMModel.trainable_variables[5]
+        wfg_next_lstm = self.biLSTMModel.trainable_variables[6]
+        wog_next_lstm = self.biLSTMModel.trainable_variables[7]
+        weights_next_lstm = [w_next_lstm, wig_next_lstm, wfg_next_lstm, wog_next_lstm]
+
+        weights_bi_lstm = [weights_first_lstm, weights_next_lstm]
+
+        hid_layer_foh = self.concatHeads.trainable_variables[0]
+        hid_layer_fom = self.concatHeads.trainable_variables[1]
+        hid_bias = self.concatHeads.trainable_variables[2]
+        out_layer = self.concatHeads.trainable_variables[4]
+        out_bias = self.concatHeads.trainable_variables[5]
+        heads_variables = [hid_layer_foh, hid_layer_fom, hid_bias, out_layer, out_bias]
+
+        r_hid_layer_foh = self.concatRelations.trainable_variables[0]
+        r_hid_layer_fom = self.concatRelations.trainable_variables[1]
+        r_hid_bias = self.concatRelations.trainable_variables[2]
+        r_out_layer = self.concatRelations.trainable_variables[5]
+        r_out_bias = self.concatRelations.trainable_variables[6]
+        relations_vocabulary = self.concatRelations.trainable_variables[4]
+        relations_variables = [r_hid_layer_foh, r_hid_layer_fom, r_hid_bias, r_out_layer, r_out_bias,
+                               relations_vocabulary]
+
+        return weights_bi_lstm, heads_variables, relations_variables
+
