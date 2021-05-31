@@ -11,6 +11,7 @@ import mstlstm_predict_tf
 
 
 def evaluate_model():
+    print("Starting Validation...")
     conllu = (os.path.splitext(dev_file.lower())[1] == '.conllu')
     devpath = os.path.join(output_path, 'dev_epoch_' + str(epoch + 1) + '.conllu')
     utils.write_conll(devpath, mstlstm_predict_tf.predict(dev_file, options.wembedding_dims, weights_bi_lstm,
@@ -50,7 +51,7 @@ if __name__ == '__main__':
 
     parser.add_option("--wembedding", type="int", dest="wembedding_dims", default=100)
 
-    parser.add_option("--epochs", type="int", dest="epochs", default=20)
+    parser.add_option("--epochs", type="int", dest="epochs", default=40)
     parser.add_option("--hidden", type="int", dest="hidden_units", default=100)
     parser.add_option("--hidden2", type="int", dest="hidden2_units", default=0)
     parser.add_option("--optim", type="string", dest="optim", default='adam')
@@ -97,6 +98,4 @@ if __name__ == '__main__':
         base_name = output_path + '/' + model_name
         parser.save_light(base_name, str(epoch + 1))
         weights_bi_lstm, heads_variables, relations_variables = parser.get_model_variables()
-        # print(f"Weight First LSTM after epoch {epoch}")
-        # print(weights_bi_lstm[0][0])
         evaluate_model()

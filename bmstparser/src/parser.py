@@ -3,7 +3,7 @@ import os.path
 import pickle
 import time
 from optparse import OptionParser
-
+from numpy import save
 import torch
 
 import mstlstm
@@ -37,12 +37,29 @@ def evaluate_model():
                     print('LAS:%s' % l.strip().split()[-1])
 
 
+# def export_parameters(parser_model):
+#     hid_layer_foh = parser_model.hidLayerFOH.detach().cpu().numpy()
+#     save('hid_layer_foh', hid_layer_foh)
+#     hid_layer_fom = parser_model.hidLayerFOM.detach().cpu().numpy()
+#     hid_bias = parser_model.hidBias.detach().cpu().numpy()
+#     out_layer = parser_model.outLayer.detach().cpu().numpy()
+#     out_bias = parser_model.outBias.detach().cpu().numpy()
+#
+#     r_hid_layer_foh = parser_model.rhidLayerFOH.detach().cpu().numpy()
+#     r_hid_layer_fom = parser_model.rhidLayerFOM.detach().cpu().numpy()
+#     r_hid_bias = parser_model.rhidBias.detach().cpu().numpy()
+#     r_out_layer = parser_model.routLayer.detach().cpu().numpy()
+#     r_out_bias = parser_model.routBias.detach().cpu().numpy()
+#
+#     print("Export numpy values")
+
+
 if __name__ == '__main__':
     parser = OptionParser()
 
     training_phase = True  # False implies prediction phase
 
-    parser.add_option("--outdir", type="string", dest="output", default="/model")
+    parser.add_option("--outdir", type="string", dest="output", default="/model-small-pytorch")
 
     parser.add_option("--numthread", type="int", dest="numthread", default=8)
 
@@ -64,7 +81,7 @@ if __name__ == '__main__':
         parser.add_option("--oembedding", type="int", dest="oembedding_dims", default=0) #ontology
         parser.add_option("--cembedding", type="int", dest="cembedding_dims", default=0) #cpos
 
-        parser.add_option("--epochs", type="int", dest="epochs", default=5)
+        parser.add_option("--epochs", type="int", dest="epochs", default=1)
         parser.add_option("--hidden", type="int", dest="hidden_units", default=100)
         parser.add_option("--hidden2", type="int", dest="hidden2_units", default=0)
         parser.add_option("--optim", type="string", dest="optim", default='adam')
@@ -75,7 +92,7 @@ if __name__ == '__main__':
 
         parser.add_option("--params", dest="params", help="Parameters file", metavar="FILE", default="params.pickle")
         parser.add_option("--model", dest="model", help="Load/Save model file", metavar="FILE",
-                          default="/model/neuralfirstorder.model")
+                          default="/model-small-pytorch/neuralfirstorder.model")
 
     else:
         parser.add_option("--predict", action="store_true", dest="predictFlag", default=True)
@@ -84,9 +101,9 @@ if __name__ == '__main__':
                           default="/corpus/en-ud-test.conllu")
 
         parser.add_option("--params", dest="params", help="Parameters file", metavar="FILE",
-                          default="/model/params.pickle")
+                          default="/model-tiny-pytorch/params.pickle")
         parser.add_option("--model", dest="model", help="Load/Save model file", metavar="FILE",
-                          default="/model/neuralfirstorder.model3")
+                          default="/model-small-pytorch/neuralfirstorder.model1")
 
     (options, args) = parser.parse_args()
     # Comment multiprocess when debugging
@@ -115,6 +132,7 @@ if __name__ == '__main__':
         print('Initializing lstm mstparser:')
         parser = mstlstm.MSTParserLSTM(words, pos, rels, enum_word, stored_opt, onto, cpos)
         parser.load(model_path)
+        # export_parameters(parser.model)
         conllu = (os.path.splitext(test_file.lower())[1] == '.conllu')
         testpath = os.path.join(output_file, 'test_pred.conll' if not conllu else 'test_pred.conllu')
 
@@ -158,6 +176,6 @@ if __name__ == '__main__':
             print('Starting epoch', epoch)
             parser.train(train_file)
             parser.save(os.path.join(output_file, os.path.basename(model_path) + str(epoch + 1)))
-            # evaluate_model()
+            evaluate_model()
 
 

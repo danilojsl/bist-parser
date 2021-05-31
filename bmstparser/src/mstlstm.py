@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import optim
 from torch.nn.init import *
+from parser_modules_tf import EmbeddingsLookup
 
 import decoder
 import utils
@@ -96,10 +97,7 @@ class MSTParserLSTMModel(nn.Module):
             self.init_hidden(self.ldims) for _ in range(4)]
 
         self.wlookup = nn.Embedding(len(vocab) + 3, self.wdims)
-        self.plookup = nn.Embedding(len(pos) + 3, self.pdims)
-        self.rlookup = nn.Embedding(len(rels), self.rdims)
-        self.olookup = nn.Embedding(len(onto) + 3, self.odims)
-        self.clookup = nn.Embedding(len(cpos) + 3, self.cdims)
+        # self.embeddings = EmbeddingsLookup(len(vocab) + 3, self.wdims)
 
         self.hidden_units = options.hidden_units
         self.hidden2_units = options.hidden2_units
@@ -277,6 +275,7 @@ class MSTParserLSTMModel(nn.Module):
         if e > 0:
             errs += [(exprs[h][i] - exprs[g][i])[0]
                      for i, (h, g) in enumerate(zip(heads, gold)) if h != g]
+
         return e, errs, lerrs
 
     def process_sentence_embeddings(self, sentence):
@@ -285,7 +284,9 @@ class MSTParserLSTMModel(nn.Module):
             dropFlag = (random.random() < (c / (0.25 + c)))
             w_index = int(self.vocab.get(entry.norm, 0)) if dropFlag else 0
             wordvec = self.wlookup(scalar(w_index)) if self.wdims > 0 else None
+            # wordvec = self.embeddings.lookup(np.array(w_index)) if self.wdims > 0 else None
 
+            # entry.vec = torch.from_numpy(wordvec.numpy())
             entry.vec = wordvec
             entry.lstms = [entry.vec, entry.vec]
             entry.headfov = None
@@ -380,4 +381,5 @@ class MSTParserLSTM:
     def print_model_parameters(self):
         for name, param in self.model.named_parameters():
             if param.requires_grad:
-                print(name, param.data)
+                # print(name, param.data)
+                print(name, param.shape)

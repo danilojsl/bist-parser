@@ -60,22 +60,22 @@ class FirstBlockLSTMModule(tf.keras.layers.Layer):
         self.lstm_dims = lstm_dims
 
     def build(self, input_shape):
-        print("In build FirstBlockLSTMModule")
-        self.input_size = input_shape[0].dims[2]
+        self.input_size = input_shape[0].dims[1]
         values = self.initializer(shape=[self.input_size + self.lstm_dims, self.lstm_dims * 4])
         self.weight_matrix = tf.Variable(values, name='w_first_lstm')
-        print("Initial Weight First LSTM:")
-        print(self.weight_matrix)
+
         values = self.initializer(shape=[self.lstm_dims])
         self.weight_input_gate = tf.Variable(values, name='wig_first_lstm')
         self.weight_forget_gate = tf.Variable(values, name='wfg_first_lstm')
         self.weight_output_gate = tf.Variable(values, name='wog_first_lstm')
 
     def call(self, inputs):
-        time_steps = inputs[0].shape.dims[1]
+        time_steps = len(inputs)
 
-        vec_for = tf.reshape(inputs[0], shape=[time_steps, self.sample_size, self.input_size])
-        vec_back = tf.reshape(inputs[1], shape=[time_steps, self.sample_size, self.input_size])
+        features_for = inputs
+        features_back = list(reversed(inputs))
+        vec_for = tf.reshape(tf.concat(features_for, 0), shape=[time_steps, self.sample_size, self.input_size])
+        vec_back = tf.reshape(tf.concat(features_back, 0), shape=[time_steps, self.sample_size, self.input_size])
 
         block_lstm_for_1 = self.get_lstm_output(vec_for, time_steps)
         block_lstm_back_1 = self.get_lstm_output(vec_back, time_steps)
@@ -83,11 +83,7 @@ class FirstBlockLSTMModule(tf.keras.layers.Layer):
         res_for_1 = tf.reshape(block_lstm_for_1.h, shape=[self.sample_size, time_steps, self.lstm_dims])
         res_back_1 = tf.reshape(block_lstm_back_1.h, shape=[self.sample_size, time_steps, self.lstm_dims])
 
-        vec_cat = self.concatenate_layers(res_for_1[0], res_back_1[0], time_steps)
-        vec_for_2 = tf.reshape(tf.concat(vec_cat, 0), shape=(self.sample_size, time_steps, -1))
-        vec_back_2 = tf.reshape(tf.concat(list(reversed(vec_cat)), 0), shape=(self.sample_size, time_steps, -1))
-
-        return [vec_for_2, vec_back_2]
+        return [res_for_1, res_back_1]
 
     def get_lstm_output(self, input_sequence, time_steps):
         block_lstm = tf.raw_ops.BlockLSTM(seq_len_max=time_steps, x=input_sequence, cs_prev=self.ini_cell_state,
@@ -96,29 +92,22 @@ class FirstBlockLSTMModule(tf.keras.layers.Layer):
                                           wco=self.weight_output_gate, b=self.bias)
         return block_lstm
 
-    @staticmethod
-    def concatenate_layers(array1, array2, num_vec):
-        concat_size = array1.shape[1] + array2.shape[1]
-        concat_result = [tf.reshape(tf.concat([array1[i], array2[num_vec - i - 1]], 0), shape=(1, concat_size))
-                         for i in range(num_vec)]
-        return concat_result
-
 
 class NextBlockLSTM(tf.keras.layers.Layer):
 
     def __init__(self, lstm_dims):
         super().__init__(name="NextBlockLSTM")
-        self.initializer = tf.keras.initializers.GlorotUniform()  # Xavier uniform
-        self.sample_size = 1
-        self.ini_cell_state = tf.zeros(shape=[self.sample_size, lstm_dims], name='c_next_lstm')
-        self.ini_hidden_state = tf.zeros(shape=[self.sample_size, lstm_dims], name='h_next_lstm')
-
-        self.bias = tf.zeros(shape=[lstm_dims * 4], name='b_next_lstm')
         self.lstm_dims = lstm_dims
+        self.initializer = tf.keras.initializers.GlorotUniform(seed=1)  # Xavier uniform
+        self.sample_size = 1
+        self.ini_cell_state = tf.zeros(shape=[self.sample_size, self.lstm_dims], name='c_next_lstm')
+        self.ini_hidden_state = tf.zeros(shape=[self.sample_size, self.lstm_dims], name='h_next_lstm')
+
+        self.bias = tf.zeros(shape=[self.lstm_dims * 4], name='b_next_lstm')
 
     def build(self, input_shape):
         self.input_size = input_shape[0].dims[2]
-        values = self.initializer(shape=[self.input_size + self.lstm_dims, self.lstm_dims * 4])
+        values = self.initializer(shape=[self.input_size + (self.lstm_dims * 2), self.lstm_dims * 4])
         self.weight_matrix = tf.Variable(values, name='w_next_lstm')
 
         values = self.initializer(shape=[self.lstm_dims])
@@ -128,10 +117,13 @@ class NextBlockLSTM(tf.keras.layers.Layer):
 
     def call(self, inputs):
         # Forward pass
+        res_for_1 = inputs[0]
+        res_back_1 = inputs[1]
         time_steps = inputs[0].shape.dims[1]
 
-        vec_for_2 = tf.reshape(inputs[0], shape=[time_steps, self.sample_size, self.input_size])
-        vec_back_2 = tf.reshape(inputs[1], shape=[time_steps, self.sample_size, self.input_size])
+        vec_cat = self.concatenate_layers(res_for_1[0], res_back_1[0], time_steps)
+        vec_for_2 = tf.reshape(tf.concat(vec_cat, 0), shape=[time_steps, self.sample_size, -1])
+        vec_back_2 = tf.reshape(tf.concat(list(reversed(vec_cat)), 0), shape=[time_steps, self.sample_size, -1])
 
         block_lstm_for_2 = self.get_lstm_output(vec_for_2, time_steps)
         block_lstm_back_2 = self.get_lstm_output(vec_back_2, time_steps)
@@ -148,6 +140,13 @@ class NextBlockLSTM(tf.keras.layers.Layer):
                                           wci=self.weight_input_gate, wcf=self.weight_forget_gate,
                                           wco=self.weight_output_gate, b=self.bias)
         return block_lstm
+
+    @staticmethod
+    def concatenate_layers(array1, array2, num_vec):
+        concat_size = array1.shape[1] + array2.shape[1]
+        concat_result = [tf.reshape(tf.concat([array1[i], array2[num_vec - i - 1]], 0), shape=(1, concat_size))
+                         for i in range(num_vec)]
+        return concat_result
 
 
 class ConcatHeadModule(tf.keras.Model):

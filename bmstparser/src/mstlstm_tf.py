@@ -42,7 +42,7 @@ class BiLSTMModel(tf.keras.Model):
         block_lstm1_output = self.blockLstm(inputs)
         block_lstm2_output = self.nextBlockLstm(block_lstm1_output)
 
-        time_steps = inputs[0].shape.dims[1]
+        time_steps = len(inputs)
         res_for_2 = tf.reshape(block_lstm2_output[0], shape=(time_steps, self.ldims))
         res_back_2 = tf.reshape(block_lstm2_output[1], shape=(time_steps, self.ldims))
 
@@ -98,12 +98,8 @@ class MSTParserLSTM:
             for iSentence, sentence in enumerate(shuffledData):
                 if iSentence % 100 == 0 and iSentence != 0:
                     print('Processing sentence number:', iSentence,
-                          'Loss:', eloss / etotal,
                           'Time', time.time() - start)
                     start = time.time()
-                    eerrors = 0
-                    eloss = 0.0
-                    etotal = 0
 
                 conll_sentence = [entry for entry in sentence if isinstance(entry, utils.ConllEntry)]
 
@@ -115,48 +111,41 @@ class MSTParserLSTM:
                     sentence_embeddings.append(word_vec)
                     gold_heads.append(entry.parent_id)
 
-                bi_lstm_input = self.get_bi_lstm_input(sentence_embeddings)
                 with tf.GradientTape() as tape:
 
-                    bi_lstm_output = self.biLSTMModel(bi_lstm_input)
+                    bi_lstm_output = self.biLSTMModel(sentence_embeddings)
                     heads_output = self.concatHeads(bi_lstm_output)
 
-                    relations_input = []
-                    for modifier, head in enumerate(gold_heads[1:]):
-                        lstms_0 = bi_lstm_output[head][0]
-                        lstms_1 = bi_lstm_output[modifier + 1][1]
-                        concatenated_lstm = tf.reshape(utils_tf.concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
-                        relations_input.append(concatenated_lstm)
-
+                    relations_input = self.get_relations_input(gold_heads, bi_lstm_output)
                     relations_output = self.concatRelations(relations_input)
 
-                    lerrs = self.get_relation_errors(relations_output, conll_sentence)
-                    errs, e_output = self.get_head_errors(conll_sentence, heads_output)
-
-                    eerrors += e_output
-                    eloss += e_output
-                    mloss += e_output
-                    etotal += len(sentence)
-
-                    if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
-                        if len(errs) > 0 or len(lerrs) > 0:
-                            reshaped_lerrs = [tf.reshape(item, [1]) for item in lerrs]
-                            eerrs_sum = self.loss_function(errs, reshaped_lerrs)
+                    loss_input = self.get_loss_input(conll_sentence, heads_output, relations_output)
+                    loss_value = self.loss_function(*loss_input)
 
                 trainable_variables = self.biLSTMModel.trainable_variables + \
                                       self.concatHeads.trainable_variables + \
                                       self.concatRelations.trainable_variables
-                if iSentence % batch == 0 or len(errs) > 0 or len(lerrs) > 0:
-                    if len(errs) > 0 or len(lerrs) > 0:
-                        grads = tape.gradient(eerrs_sum, sources=trainable_variables)
-                        self.trainer.apply_gradients(zip(grads, trainable_variables))
 
-        print("Loss: ", mloss / iSentence)
+                grads = tape.gradient(loss_value, sources=trainable_variables)
+                self.trainer.apply_gradients(zip(grads, trainable_variables))
+        print("Loss Value: ", loss_value.numpy())
+
+    def custom_loss(self, heads_loss_input, relations_loss_input):
+        with tf.GradientTape() as tape:
+            heads_loss_value = self.loss_heads(*heads_loss_input)
+            relations_loss_value = self.loss_relations(*relations_loss_input)
+            loss_value = [heads_loss_value, relations_loss_value]
+            trainable_variables = self.biLSTMModel.trainable_variables + self.concatHeads.trainable_variables + \
+                                  self.concatRelations.trainable_variables
+
+        return loss_value, tape.gradient(loss_value, sources=trainable_variables)
 
     @staticmethod
     def loss_function(y_true, y_pred):
-        l_variable = y_true + y_pred
-        return tf.reduce_sum(utils_tf.concatenate_tensors(l_variable))
+        head_errors = y_pred[0] - y_true[0]
+        relations_errors = y_pred[1] - y_true[1]
+        total_errors = head_errors + relations_errors
+        return tf.reduce_sum(tf.concat(total_errors, axis=0))
 
     def get_embeddings_input(self, entry):
         c = float(self.wordsCount.get(entry.norm, 0))
@@ -175,12 +164,24 @@ class MSTParserLSTM:
         return [vec_for, vec_back]
 
     @staticmethod
+    def get_relations_input(gold_heads, bi_lstm_output):
+        relations_input = []
+        for modifier, head in enumerate(gold_heads[1:]):
+            lstms_0 = bi_lstm_output[head][0]
+            lstms_1 = bi_lstm_output[modifier + 1][1]
+            concatenated_lstm = tf.reshape(utils_tf.concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
+            relations_input.append(concatenated_lstm)
+
+        return relations_input
+
+    @staticmethod
     def get_head_errors(sentence, heads_output):
         scores, exprs = heads_output[0], heads_output[1]
 
-        gold = [entry.parent_id for entry in sentence]
-        heads = decoder_tf.parse_proj(scores, gold)
+        gold = [entry.parent_id for entry in sentence]  # y_true
+        heads = decoder_tf.parse_proj(scores, gold)  # y_pred
 
+        # loss function
         e_output = sum([1 for h, g in zip(heads[1:], gold[1:]) if h != g])
         errs = []
         if e_output > 0:
@@ -188,15 +189,50 @@ class MSTParserLSTM:
 
         return errs, e_output
 
-    def get_relation_errors(self, relations_output, sentence):
+    @staticmethod
+    def get_heads_loss_input(sentence, heads_output):
+        scores, exprs = heads_output[0], heads_output[1]
+
+        gold = [entry.parent_id for entry in sentence]
+        heads = decoder_tf.parse_proj(scores, gold)
+        y_heads = [(exprs[h][i], exprs[g][i]) for i, (h, g) in enumerate(zip(heads, gold))]
+        y_pred, y_true = zip(*y_heads)
+
+        return tf.reshape(tf.stack(y_true), shape=(1, -1)), tf.reshape(tf.stack(y_pred), shape=(1, -1))
+
+    def get_relation_errors(self, sentence, relations_output):
         lerrs = []
         for modifier, rscores in enumerate(relations_output):
             goldLabelInd = self.relations_vocabulary[sentence[modifier + 1].relation]
             wrongLabelInd = max(((l, scr) for l, scr in enumerate(rscores) if l != goldLabelInd), key=itemgetter(1))[0]
+
             if rscores[goldLabelInd] < rscores[wrongLabelInd] + 1:
-                lerrs += [rscores[wrongLabelInd] - rscores[goldLabelInd]]
+                lerrs += [rscores[wrongLabelInd] - rscores[goldLabelInd]]  # loss_function
 
         return lerrs
+
+    def get_relations_loss_input(self, sentence, relations_output):
+        y_relations = [(0.0, 0.0)]
+        for modifier, rscores in enumerate(relations_output):
+            goldLabelInd = self.relations_vocabulary[sentence[modifier + 1].relation]
+            wrongLabelInd = max(((l, scr) for l, scr in enumerate(rscores) if l != goldLabelInd), key=itemgetter(1))[0]
+
+            if rscores[goldLabelInd] < rscores[wrongLabelInd] + 1:
+                y_relations.append((rscores[wrongLabelInd], rscores[goldLabelInd]))
+            else:
+                y_relations.append((0.0, 0.0))
+
+        y_pred, y_true = zip(*y_relations)
+
+        return tf.reshape(tf.stack(y_true), shape=(1, -1)), tf.reshape(tf.stack(y_pred), shape=(1, -1))
+
+    def get_loss_input(self, sentence, heads_output, relations_output):
+        heads_loss_input = self.get_heads_loss_input(sentence, heads_output)
+        relations_loss_input = self.get_relations_loss_input(sentence, relations_output)
+        y_true = [heads_loss_input[0], relations_loss_input[0]]
+        y_pred = [heads_loss_input[1], relations_loss_input[1]]
+
+        return y_true, y_pred
 
     def save(self, output_path, epoch):
         main_model_dir = output_path + epoch
@@ -248,4 +284,3 @@ class MSTParserLSTM:
                                relations_vocabulary]
 
         return weights_bi_lstm, heads_variables, relations_variables
-

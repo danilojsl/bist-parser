@@ -3,7 +3,7 @@ import tensorflow as tf
 
 def Parameter(shape=None, name='param'):
     shape = (1, shape) if type(shape) == int else shape
-    initializer = tf.keras.initializers.GlorotUniform()  # Xavier uniform
+    initializer = tf.keras.initializers.GlorotUniform(seed=1)  # Xavier uniform
     values = initializer(shape=shape)
     return tf.Variable(values, name=name, trainable=True)
 
