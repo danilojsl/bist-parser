@@ -170,15 +170,7 @@ class ConcatHeadModule(tf.keras.Model):
 
     def call(self, inputs):
         # Forward pass
-        scores, exprs = self.__evaluate(inputs)
-
-        return [scores, exprs]
-
-    def __evaluate(self, inputs):
-
-        def transform_tensor(tensor_list):
-            return list(map(lambda tensor: tensor[0, 0], tensor_list))
-
+        time_steps = len(inputs)
         head_vector = []
         for index in range(len(inputs)):
             lstms_0 = inputs[index][0]
@@ -190,10 +182,9 @@ class ConcatHeadModule(tf.keras.Model):
 
         exprs = [[self.__getExpr(head_vector, i, j) for j in range(len(head_vector))] for i in range(len(head_vector))]
 
-        output_tensor = [[output for output in exprsRow] for exprsRow in exprs]
-        scores = tf.stack([transform_tensor(output) for output in output_tensor])
+        scores = tf.reshape(tf.stack(exprs), shape=[time_steps, time_steps])
 
-        return scores, exprs
+        return [scores, exprs]
 
     def __getExpr(self, head_vector, i, j):
         headfov = head_vector[i][0]
