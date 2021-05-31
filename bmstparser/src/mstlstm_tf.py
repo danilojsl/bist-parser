@@ -84,12 +84,6 @@ class MSTParserLSTM:
 
     def train(self, conll_path):
         print('tensorflow version: ', tf.version.VERSION)
-        batch = 1
-        eloss = 0.0
-        mloss = 0.0
-        eerrors = 0
-        etotal = 0
-        iSentence = 0
         start = time.time()
         with open(conll_path, 'r') as conllFP:
             shuffledData = list(read_conll(conllFP))
@@ -129,16 +123,6 @@ class MSTParserLSTM:
                 grads = tape.gradient(loss_value, sources=trainable_variables)
                 self.trainer.apply_gradients(zip(grads, trainable_variables))
         print("Loss Value: ", loss_value.numpy())
-
-    def custom_loss(self, heads_loss_input, relations_loss_input):
-        with tf.GradientTape() as tape:
-            heads_loss_value = self.loss_heads(*heads_loss_input)
-            relations_loss_value = self.loss_relations(*relations_loss_input)
-            loss_value = [heads_loss_value, relations_loss_value]
-            trainable_variables = self.biLSTMModel.trainable_variables + self.concatHeads.trainable_variables + \
-                                  self.concatRelations.trainable_variables
-
-        return loss_value, tape.gradient(loss_value, sources=trainable_variables)
 
     @staticmethod
     def loss_function(y_true, y_pred):
