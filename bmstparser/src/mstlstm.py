@@ -37,6 +37,13 @@ def Parameter(shape=None, init=xavier_uniform):
     return nn.Parameter(init(torch.Tensor(*shape)))
 
 
+def ParameterNotTrainable(shape=None, init=xavier_uniform):
+    if hasattr(init, 'shape'):
+        assert not shape
+        return nn.Parameter(torch.Tensor(init))
+    shape = (1, shape) if type(shape) == int else shape
+    return nn.Parameter(init(torch.Tensor(*shape)), requires_grad=False)
+
 def scalar(f):
     if type(f) == int:
         return Variable(torch.LongTensor([f]))
@@ -329,7 +336,8 @@ class MSTParserLSTM:
 
     def train(self, conll_path):
         print('pytorch version:', torch.__version__)
-        batch = 1
+        batch = 5
+        print(f'batch size {batch}')
         eloss = 0.0
         mloss = 0.0
         eerrors = 0
@@ -376,7 +384,7 @@ class MSTParserLSTM:
                         self.trainer.step()  # optimizer.step to update weights(to see uncomment print_model_parameters)
                         # self.print_model_parameters()
                 self.trainer.zero_grad()
-        print("Loss: ", mloss / iSentence)
+        print(f"Loss for sentence {iSentence}: ", mloss / iSentence)
 
     def print_model_parameters(self):
         for name, param in self.model.named_parameters():

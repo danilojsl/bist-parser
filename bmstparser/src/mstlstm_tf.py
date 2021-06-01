@@ -43,13 +43,13 @@ class BiLSTMModel(tf.keras.Model):
         block_lstm2_output = self.nextBlockLstm(block_lstm1_output)
 
         time_steps = len(inputs)
-        res_for_2 = tf.reshape(block_lstm2_output[0], shape=(time_steps, self.ldims))
-        res_back_2 = tf.reshape(block_lstm2_output[1], shape=(time_steps, self.ldims))
+        res_for_2 = block_lstm2_output[0]
+        res_back_2 = block_lstm2_output[1]
 
         output = []
         for i in range(time_steps):
-            lstms_0 = res_for_2[i]
-            lstms_1 = res_back_2[time_steps - i - 1]
+            lstms_0 = tf.Variable(res_for_2[i], name='lstms_0')
+            lstms_1 = tf.Variable(res_back_2[time_steps - i - 1], name='lstms_1')
             output.append([lstms_0, lstms_1])
 
         return output
@@ -88,7 +88,7 @@ class MSTParserLSTM:
         with open(conll_path, 'r') as conllFP:
             shuffledData = list(read_conll(conllFP))
             # random.shuffle(shuffledData)
-
+            # TODO: Test training uncommenting shuffledata
             for iSentence, sentence in enumerate(shuffledData):
                 if iSentence % 100 == 0 and iSentence != 0:
                     print('Processing sentence number:', iSentence,
@@ -106,7 +106,6 @@ class MSTParserLSTM:
                     gold_heads.append(entry.parent_id)
 
                 with tf.GradientTape() as tape:
-
                     bi_lstm_output = self.biLSTMModel(sentence_embeddings)
                     heads_output = self.concatHeads(bi_lstm_output)
 
@@ -119,17 +118,15 @@ class MSTParserLSTM:
                 trainable_variables = self.biLSTMModel.trainable_variables + \
                                       self.concatHeads.trainable_variables + \
                                       self.concatRelations.trainable_variables
-
                 grads = tape.gradient(loss_value, sources=trainable_variables)
                 self.trainer.apply_gradients(zip(grads, trainable_variables))
         print("Loss Value: ", loss_value.numpy())
 
     @staticmethod
     def loss_function(y_true, y_pred):
-        head_errors = y_pred[0] - y_true[0]
-        relations_errors = y_pred[1] - y_true[1]
-        total_errors = head_errors + relations_errors
-        return tf.reduce_sum(tf.concat(total_errors, axis=0))
+        head_errors = tf.Variable(y_pred[0] - y_true[0])
+        relations_errors = tf.Variable(y_pred[1] - y_true[1])
+        return tf.Variable(tf.reduce_sum(tf.concat([head_errors, relations_errors], axis=1)), name='loss_value')
 
     def get_embeddings_input(self, entry):
         c = float(self.wordsCount.get(entry.norm, 0))
@@ -153,7 +150,9 @@ class MSTParserLSTM:
         for modifier, head in enumerate(gold_heads[1:]):
             lstms_0 = bi_lstm_output[head][0]
             lstms_1 = bi_lstm_output[modifier + 1][1]
-            concatenated_lstm = tf.reshape(utils_tf.concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
+            # concatenated_lstm = tf.reshape(utils_tf.concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
+            concatenated_lstm = tf.Variable(tf.reshape(tf.concat([lstms_0, lstms_1], axis=0), shape=(1, -1)),
+                                            name='concatenated_lstm')
             relations_input.append(concatenated_lstm)
 
         return relations_input

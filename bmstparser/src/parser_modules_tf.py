@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Embedding
 import utils_tf
-
+from numpy import load
 
 class EmbeddingsLookup:
 
@@ -80,8 +80,10 @@ class FirstBlockLSTMModule(tf.keras.layers.Layer):
         block_lstm_for_1 = self.get_lstm_output(vec_for, time_steps)
         block_lstm_back_1 = self.get_lstm_output(vec_back, time_steps)
 
-        res_for_1 = tf.reshape(block_lstm_for_1.h, shape=[self.sample_size, time_steps, self.lstm_dims])
-        res_back_1 = tf.reshape(block_lstm_back_1.h, shape=[self.sample_size, time_steps, self.lstm_dims])
+        res_for_1 = tf.Variable(tf.reshape(block_lstm_for_1, shape=[self.sample_size, time_steps, self.lstm_dims]),
+                                name='res_for_1', trainable=True)
+        res_back_1 = tf.Variable(tf.reshape(block_lstm_back_1, shape=[self.sample_size, time_steps, self.lstm_dims]),
+                                 name='res_back_1')
 
         return [res_for_1, res_back_1]
 
@@ -90,7 +92,7 @@ class FirstBlockLSTMModule(tf.keras.layers.Layer):
                                           h_prev=self.ini_hidden_state, w=self.weight_matrix,
                                           wci=self.weight_input_gate, wcf=self.weight_forget_gate,
                                           wco=self.weight_output_gate, b=self.bias)
-        return block_lstm
+        return tf.Variable(block_lstm.h, name='block_lstm.h')
 
 
 class NextBlockLSTM(tf.keras.layers.Layer):
@@ -120,16 +122,28 @@ class NextBlockLSTM(tf.keras.layers.Layer):
         res_for_1 = inputs[0]
         res_back_1 = inputs[1]
         time_steps = inputs[0].shape.dims[1]
+        # res_for_1_np = load('/home/danilo/IdeaProjects/JSL/bist-parser-pytorch/res_for_1.npy')
+        # res_back_1_np = load('/home/danilo/IdeaProjects/JSL/bist-parser-pytorch/res_back_1.npy')
+        # res_for_1 = tf.reshape(tf.convert_to_tensor(res_for_1_np), shape=[1, time_steps, -1])
+        # res_back_1 = tf.reshape(tf.convert_to_tensor(res_back_1_np), shape=[1, time_steps, -1])
 
-        vec_cat = self.concatenate_layers(res_for_1[0], res_back_1[0], time_steps)
-        vec_for_2 = tf.reshape(tf.concat(vec_cat, 0), shape=[time_steps, self.sample_size, -1])
-        vec_back_2 = tf.reshape(tf.concat(list(reversed(vec_cat)), 0), shape=[time_steps, self.sample_size, -1])
+        vec_cat = self.concatenate_lstm(res_for_1[0], res_back_1[0], time_steps)
+        vec_for_2 = tf.Variable(tf.reshape(tf.concat(vec_cat, 0), shape=[time_steps, self.sample_size, -1]),
+                                name='vec_for_2')
+        vec_back_2 = tf.Variable(tf.reshape(tf.concat(list(reversed(vec_cat)), 0),
+                                            shape=[time_steps, self.sample_size, -1]), name='vec_back_2')
 
         block_lstm_for_2 = self.get_lstm_output(vec_for_2, time_steps)
         block_lstm_back_2 = self.get_lstm_output(vec_back_2, time_steps)
 
-        res_for_2 = tf.reshape(block_lstm_for_2.h, shape=[self.sample_size, time_steps, self.lstm_dims])
-        res_back_2 = tf.reshape(block_lstm_back_2.h, shape=[self.sample_size, time_steps, self.lstm_dims])
+        res_for_2 = tf.Variable(tf.reshape(block_lstm_for_2, shape=[time_steps, self.lstm_dims]),
+                                name='res_for_2')
+        res_back_2 = tf.Variable(tf.reshape(block_lstm_back_2, shape=[time_steps, self.lstm_dims]),
+                                 name='res_back_2')
+        # res_for_2_np = load('/home/danilo/IdeaProjects/JSL/bist-parser-pytorch/res_for_2.npy')
+        # res_back_2_np = load('/home/danilo/IdeaProjects/JSL/bist-parser-pytorch/res_back_2.npy')
+        # res_for_2 = tf.convert_to_tensor(res_for_2_np)
+        # res_back_2 = tf.convert_to_tensor(res_back_2_np)
 
         return [res_for_2, res_back_2]
 
@@ -139,13 +153,16 @@ class NextBlockLSTM(tf.keras.layers.Layer):
                                           h_prev=self.ini_hidden_state, w=self.weight_matrix,
                                           wci=self.weight_input_gate, wcf=self.weight_forget_gate,
                                           wco=self.weight_output_gate, b=self.bias)
-        return block_lstm
+        return tf.Variable(block_lstm.h, name='next_block_lstm.h')
 
     @staticmethod
-    def concatenate_layers(array1, array2, num_vec):
+    def concatenate_lstm(array1, array2, num_vec):
         concat_size = array1.shape[1] + array2.shape[1]
-        concat_result = [tf.reshape(tf.concat([array1[i], array2[num_vec - i - 1]], 0), shape=(1, concat_size))
+        concat_result = [tf.Variable(tf.reshape(tf.concat([array1[i], array2[num_vec - i - 1]], axis=0),
+                                                shape=(1, concat_size)), name='concat_lstm')
                          for i in range(num_vec)]
+        # concat_result = [tf.reshape(tf.concat([array1[i], array2[num_vec - i - 1]], 0), shape=(1, concat_size))
+        #                  for i in range(num_vec)]
         return concat_result
 
 
@@ -175,9 +192,11 @@ class ConcatHeadModule(tf.keras.Model):
         for index in range(len(inputs)):
             lstms_0 = inputs[index][0]
             lstms_1 = inputs[index][1]
-            concatenated_lstm = tf.reshape(utils_tf.concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
-            headfov = tf.matmul(concatenated_lstm, self.hidLayerFOH)
-            modfov = tf.matmul(concatenated_lstm, self.hidLayerFOM)
+            # concatenated_lstm = tf.reshape(utils_tf.concatenate_tensors([lstms_0, lstms_1]), shape=(1, -1))
+            concatenated_lstm = tf.Variable(tf.reshape(tf.concat([lstms_0, lstms_1], axis=0), shape=(1, -1)),
+                                            name='concatenated_lstm')
+            headfov = tf.Variable(tf.matmul(concatenated_lstm, self.hidLayerFOH), name='headfov')
+            modfov = tf.Variable(tf.matmul(concatenated_lstm, self.hidLayerFOM), name='modfov')
             head_vector.append([headfov, modfov])
 
         exprs = [[self.__getExpr(head_vector, i, j) for j in range(len(head_vector))] for i in range(len(head_vector))]
@@ -196,8 +215,8 @@ class ConcatHeadModule(tf.keras.Model):
             next_activation_result = self.activation(self.hid2Bias + matmul_result)
             output = tf.matmul(next_activation_result, self.outLayer) + self.outBias
         else:
-            activation_result = self.activation(headfov + modfov + self.hidBias)
-            output = tf.matmul(activation_result, self.outLayer) + self.outBias
+            activation_result = tf.Variable(self.activation(headfov + modfov + self.hidBias), name='activation_result')
+            output = tf.Variable(tf.matmul(activation_result, self.outLayer) + self.outBias, name='output')
 
         return output
 
@@ -228,8 +247,8 @@ class ConcatRelationModule(tf.keras.Model):
         # Forwad pass
         rscores_list = []
         for concatenated_lstm in inputs:
-            relation_head_fov = tf.matmul(concatenated_lstm, self.rhidLayerFOH)
-            relation_mod_fov = tf.matmul(concatenated_lstm, self.rhidLayerFOM)
+            relation_head_fov = tf.Variable(tf.matmul(concatenated_lstm, self.rhidLayerFOH), name='relation_head_fov')
+            relation_mod_fov = tf.Variable(tf.matmul(concatenated_lstm, self.rhidLayerFOM), name='relation_mod_fov')
             rscores = self.__evaluateLabel(relation_head_fov, relation_mod_fov)
             rscores_list.append(rscores)
 
@@ -244,8 +263,9 @@ class ConcatRelationModule(tf.keras.Model):
             next_activation_result = self.activation(self.rhid2Bias + matmul_result)
             output = tf.matmul(next_activation_result, self.routLayer) + self.routBias
         else:
-            activation_result = self.activation(rheadfov + rmodfov + self.rhidBias)
-            output = tf.matmul(activation_result, self.routLayer) + self.routBias
+            activation_result = tf.Variable(self.activation(rheadfov + rmodfov + self.rhidBias),
+                                            name='activation_result')
+            output = tf.Variable(tf.matmul(activation_result, self.routLayer) + self.routBias, name='output')
 
         return output[0]
 
