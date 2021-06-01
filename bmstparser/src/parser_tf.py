@@ -51,7 +51,7 @@ if __name__ == '__main__':
 
     parser.add_option("--wembedding", type="int", dest="wembedding_dims", default=100)
 
-    parser.add_option("--epochs", type="int", dest="epochs", default=40)
+    parser.add_option("--epochs", type="int", dest="epochs", default=50)
     parser.add_option("--hidden", type="int", dest="hidden_units", default=100)
     parser.add_option("--hidden2", type="int", dest="hidden2_units", default=0)
     parser.add_option("--optim", type="string", dest="optim", default='adam')

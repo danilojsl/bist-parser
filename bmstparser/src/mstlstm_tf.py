@@ -87,7 +87,7 @@ class MSTParserLSTM:
         start = time.time()
         with open(conll_path, 'r') as conllFP:
             shuffledData = list(read_conll(conllFP))
-            # random.shuffle(shuffledData)
+            random.shuffle(shuffledData)
 
             for iSentence, sentence in enumerate(shuffledData):
                 if iSentence % 100 == 0 and iSentence != 0:
@@ -128,8 +128,8 @@ class MSTParserLSTM:
     def loss_function(y_true, y_pred):
         head_errors = y_pred[0] - y_true[0]
         relations_errors = y_pred[1] - y_true[1]
-        total_errors = head_errors + relations_errors
-        return tf.reduce_sum(tf.concat(total_errors, axis=0))
+        total_errors = tf.concat([head_errors, relations_errors], axis=1)
+        return tf.reduce_sum(total_errors)
 
     def get_embeddings_input(self, entry):
         c = float(self.wordsCount.get(entry.norm, 0))
