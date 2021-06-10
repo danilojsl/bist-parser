@@ -159,21 +159,6 @@ class MSTParserLSTM:
         return relations_input
 
     @staticmethod
-    def get_head_errors(sentence, heads_output):
-        scores, exprs = heads_output[0], heads_output[1]
-
-        gold = [entry.parent_id for entry in sentence]  # y_true
-        heads = decoder_tf.parse_proj(scores, gold)  # y_pred
-
-        # loss function
-        e_output = sum([1 for h, g in zip(heads[1:], gold[1:]) if h != g])
-        errs = []
-        if e_output > 0:
-            errs += [(exprs[h][i] - exprs[g][i])[0] for i, (h, g) in enumerate(zip(heads, gold)) if h != g]
-
-        return errs, e_output
-
-    @staticmethod
     def get_heads_loss_input(sentence, heads_output):
         scores, exprs = heads_output[0], heads_output[1]
 
@@ -183,17 +168,6 @@ class MSTParserLSTM:
         y_pred, y_true = zip(*y_heads)
 
         return tf.reshape(tf.stack(y_true), shape=(1, -1)), tf.reshape(tf.stack(y_pred), shape=(1, -1))
-
-    def get_relation_errors(self, sentence, relations_output):
-        lerrs = []
-        for modifier, rscores in enumerate(relations_output):
-            goldLabelInd = self.relations_vocabulary[sentence[modifier + 1].relation]
-            wrongLabelInd = max(((l, scr) for l, scr in enumerate(rscores) if l != goldLabelInd), key=itemgetter(1))[0]
-
-            if rscores[goldLabelInd] < rscores[wrongLabelInd] + 1:
-                lerrs += [rscores[wrongLabelInd] - rscores[goldLabelInd]]  # loss_function
-
-        return lerrs
 
     def get_relations_loss_input(self, sentence, relations_output):
         y_relations = [(0.0, 0.0)]
